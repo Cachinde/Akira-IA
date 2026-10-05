@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: akira-ui
+    runtime: docker
+    plan: free
+    healthCheckPath: /api/health
+    envVars:
+      - key: HF_SPACE_ID
+        value: akra35567/Akiragpu
+      - key: HF_TOKEN
+        sync: false
