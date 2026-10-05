@@ -450,7 +450,7 @@ export default function Page() {
           )}
           <div className="profile-row">
             <span className="profile-avatar">A</span>
-            <span><strong>AKIRA GPU</strong><small>Histórico neste navegador</small></span>
+            <span><strong>AKIRA SOFTEDGE</strong><small>Histórico neste navegador</small></span>
             <span className="profile-dot" aria-hidden="true" />
           </div>
         </div>
@@ -468,7 +468,7 @@ export default function Page() {
             <ChevronDown className="model-chevron" size={14} />
           </div>
           <div className="topbar-right">
-            <span className="space-status"><span /> AKIRAGPU</span>
+            <span className="space-status"><span /> SOFTEDGE</span>
             <button className="topbar-new-chat" onClick={newChat}><MessageSquarePlus size={15} /> Nova conversa</button>
           </div>
         </header>

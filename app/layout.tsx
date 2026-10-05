@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || "https://akira-ui.onrender.com"),
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || "https://akira-ia.onrender.com"),
   title: "AKIRA — Assistente inteligente",
   description: "Conversa com a AKIRA, explora ideias e cria imagens.",
   icons: { icon: "/akira-logo.png" },
@@ -15,18 +15,18 @@ export const metadata: Metadata = {
     description: "Conversa com a AKIRA, explora ideias e cria imagens.",
     images: [
       {
-        url: "/akira-logo.png",
-        width: 768,
-        height: 768,
+        url: "/akira-og.png",
+        width: 1200,
+        height: 630,
         alt: "Logótipo da AKIRA",
       },
     ],
   },
   twitter: {
-    card: "summary",
+    card: "summary_large_image",
     title: "AKIRA — Assistente inteligente",
     description: "Conversa com a AKIRA, explora ideias e cria imagens.",
-    images: ["/akira-logo.png"],
+    images: ["/akira-og.png"],
   },
 };
 

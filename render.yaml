@@ -7,7 +7,9 @@ services:
     envVars:
       - key: HF_SPACE_ID
         value: akra35567/Akiragpu
+      - key: AKIRA_CHAT_SPACE_ID
+        value: akra35567/AKIRA-SOFTEDGE
       - key: NEXT_PUBLIC_SITE_URL
-        value: https://akira-ui.onrender.com
+        value: https://akira-ia.onrender.com
       - key: HF_TOKEN
         sync: false
