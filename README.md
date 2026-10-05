@@ -33,6 +33,8 @@ docker build -t akira-ui .
 docker run --rm -p 3000:3000 -e HF_SPACE_ID=akra35567/Akiragpu akira-ui
 ```
 
-No Render, cria um **Web Service** com runtime Docker na pasta `bot_ui`, ou aplica o `render.yaml`. Configura `HF_TOKEN` nos Environment Variables apenas se precisares de autenticação/quota adicional no Space. O serviço usa o `PORT` que o Render fornece e tem health check em `/api/health`.
+No Render, cria um **Web Service** com runtime Docker na pasta `bot_ui`, ou aplica o `render.yaml`. Configura `HF_TOKEN` nos Environment Variables apenas se precisares de autenticação/quota adicional no Space. `NEXT_PUBLIC_SITE_URL` define o domínio absoluto usado nas pré-visualizações de links; atualiza-o se usares um domínio personalizado. O serviço usa o `PORT` que o Render fornece e tem health check em `/api/health`.
+
+As etiquetas Open Graph e Twitter usam o logótipo da AKIRA para que apps de mensagens e redes sociais mostrem a marca ao partilhares o link. Algumas plataformas guardam as pré-visualizações em cache; depois de publicar, pode ser necessário pedir-lhes para atualizar essa cache.
 
 Esta aplicação não pode ser publicada como site estático: as rotas `/api/chat` e `/api/image` precisam do servidor Next para encaminhar os pedidos à AKIRA sem expor credenciais. As conversas e as imagens ficam no IndexedDB do browser; não são armazenadas no container Render.
