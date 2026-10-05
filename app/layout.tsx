@@ -3,6 +3,7 @@ import "./globals.css";
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://akira-ia.onrender.com";
 const shareImageUrl = new URL("/akira-share-v2.png", siteUrl).toString();
+const sharePageUrl = new URL("/?share=akira-v2", siteUrl).toString();
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
@@ -12,7 +13,7 @@ export const metadata: Metadata = {
   openGraph: {
     type: "website",
     locale: "pt_PT",
-    url: "/",
+    url: sharePageUrl,
     siteName: "AKIRA",
     title: "AKIRA — Assistente inteligente",
     description: "Conversa com a AKIRA, explora ideias e cria imagens.",
