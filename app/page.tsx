@@ -130,6 +130,17 @@ export default function Page() {
   }, [activeId, messages.length, busy]);
 
   useEffect(() => {
+    const ping = () => {
+      if (document.visibilityState !== "visible") return;
+      void fetch("/api/health", { cache: "no-store", keepalive: true }).catch((error: unknown) => {
+        console.warn("O ping de disponibilidade da AKIRA falhou.", error);
+      });
+    };
+    const interval = window.setInterval(ping, 5 * 60 * 1000);
+    return () => window.clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
     function onShortcut(event: globalThis.KeyboardEvent) {
       if ((event.metaKey || event.ctrlKey) && event.key.toLocaleLowerCase() === "k") {
         event.preventDefault();
