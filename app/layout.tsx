@@ -39,6 +39,7 @@ export const metadata: Metadata = {
 export const viewport = {
   themeColor: "#111113",
   colorScheme: "dark" as const,
+  viewportFit: "cover" as const,
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
