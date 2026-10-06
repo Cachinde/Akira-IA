@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: akira-wake
+    runtime: static
+    buildCommand: echo "Publishing the AKIRA wake screen"
+    staticPublishPath: ./wake
+    autoDeploy: true
+    buildFilter:
+      paths:
+        - wake/**
+        - render-wake.yaml
