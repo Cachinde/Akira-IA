@@ -94,6 +94,7 @@ export default function Page() {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
+  const [slowRequest, setSlowRequest] = useState(false);
   const [toolsOpen, setToolsOpen] = useState(false);
   const [imgMode, setImgMode] = useState(false);
   const [sideOpen, setSideOpen] = useState(false);
@@ -391,6 +392,8 @@ export default function Page() {
     setInput("");
     setAttachment(null);
     setBusy(true);
+    setSlowRequest(false);
+    const slowWaitTimer = setTimeout(() => setSlowRequest(true), 8_000);
     setStatus("");
     setStatusKind("");
     setToolsOpen(false);
@@ -480,6 +483,8 @@ export default function Page() {
         setStatusKind("error");
       }
     } finally {
+      clearTimeout(slowWaitTimer);
+      setSlowRequest(false);
       setBusy(false);
       inputRef.current?.focus();
     }
@@ -780,7 +785,9 @@ export default function Page() {
               {busy && (
                 <div className="msg assistant">
                   <div className="assistant-mark"><Logo size={24} /></div>
-                  <div className="typing"><LoaderCircle size={15} className="spin" /> A AKIRA está a pensar</div>
+                  <div className="typing"><LoaderCircle size={15} className="spin" />{slowRequest
+                    ? " A resposta está a demorar; se a AKIRA estava inativa, pode estar a arrancar. Mantém esta página aberta."
+                    : " A AKIRA está a pensar"}</div>
                 </div>
               )}
               <div ref={bottomRef} />
