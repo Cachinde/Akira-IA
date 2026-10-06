@@ -1,5 +1,16 @@
 services:
   - type: web
+    name: akira-wake
+    runtime: static
+    plan: free
+    buildCommand: echo "Publishing the AKIRA wake screen"
+    staticPublishPath: ./wake
+    autoDeploy: true
+    buildFilter:
+      paths:
+        - wake/**
+        - render.yaml
+  - type: web
     name: akira-ui
     runtime: docker
     plan: free
@@ -11,6 +22,8 @@ services:
         value: akra35567/AKIRA-SOFTEDGE
       - key: NEXT_PUBLIC_SITE_URL
         value: https://akira-ia.onrender.com
+      - key: AKIRA_WAKE_ORIGIN
+        value: https://akira-wake.onrender.com
       - key: HF_TOKEN
         sync: false
       - key: DATABASE_URL
