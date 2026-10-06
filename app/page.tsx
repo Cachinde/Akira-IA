@@ -584,17 +584,22 @@ export default function Page() {
                     </div>
                     {message.image && <img className="gen" src={message.image} alt="Imagem gerada pela AKIRA" />}
                     {message.attachmentName && <span className="message-attachment"><Paperclip size={12} /> {message.attachmentName}</span>}
-                    {message.role === "assistant" && (
-                      <div className="message-actions">
-                        <button className="icon-button" onClick={() => void copyMessage(message)} aria-label="Copiar resposta" title="Copiar resposta">
-                          {copiedId === message.id ? <Check size={14} /> : <Copy size={14} />}
-                          <span>{copiedId === message.id ? "Copiado" : "Copiar"}</span>
-                        </button>
+                    <div className="message-actions">
+                      <button
+                        className="icon-button"
+                        onClick={() => void copyMessage(message)}
+                        aria-label={message.role === "assistant" ? "Copiar resposta" : "Copiar mensagem"}
+                        title={message.role === "assistant" ? "Copiar resposta" : "Copiar mensagem"}
+                      >
+                        {copiedId === message.id ? <Check size={14} /> : <Copy size={14} />}
+                        <span>{copiedId === message.id ? "Copiado" : "Copiar"}</span>
+                      </button>
+                      {message.role === "assistant" && (
                         <button className="icon-button" onClick={() => void shareMessage(message)} aria-label="Partilhar resposta" title="Copiar link para partilhar">
                           <Share2 size={14} /><span>Partilhar</span>
                         </button>
-                      </div>
-                    )}
+                      )}
+                    </div>
                     <time className="message-time">{formatTime(message.createdAt)}</time>
                   </div>
                 </article>
