@@ -2,7 +2,6 @@ services:
   - type: web
     name: akira-wake
     runtime: static
-    plan: free
     buildCommand: echo "Publishing the AKIRA wake screen"
     staticPublishPath: ./wake
     autoDeploy: true
