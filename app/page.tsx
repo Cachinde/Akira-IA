@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  ArrowUpRight,
   ArrowUp,
   Check,
   Copy,
@@ -28,6 +29,18 @@ import Logo from "../components/Logo";
 import { Chat, Msg, loadChats, saveChats } from "../lib/history";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+
+type AuthSnapshot = {
+  displayName: string | null;
+  email: string | null;
+  authenticated: boolean;
+  guestMessagesUsed: number;
+  guestMessageLimit: number;
+};
+
+type AuthMode = "profile" | "account" | null;
+
+class AccountRequiredError extends Error {}
 
 const STYLES = ["foto realista", "anime", "ilustração", "3d", "cinematográfico", "aquarela"];
 const FILE_LIMIT = 8 * 1024 * 1024;
@@ -60,7 +73,12 @@ function responseError(data: unknown, fallback: string) {
 
 async function readJson(response: Response) {
   const data: unknown = await response.json().catch(() => null);
-  if (!response.ok) throw new Error(responseError(data, "O pedido à AKIRA não foi concluído."));
+  if (!response.ok) {
+    if (data && typeof data === "object" && "code" in data && data.code === "account_required") {
+      throw new AccountRequiredError(responseError(data, "Cria uma conta grátis para continuares."));
+    }
+    throw new Error(responseError(data, "O pedido à AKIRA não foi concluído."));
+  }
   return data;
 }
 
@@ -86,6 +104,14 @@ export default function Page() {
   const [imageStyle, setImageStyle] = useState(STYLES[0]);
   const [attachment, setAttachment] = useState<{ name: string; dataUrl?: string; text?: string } | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [authSnapshot, setAuthSnapshot] = useState<AuthSnapshot | null>(null);
+  const [authReady, setAuthReady] = useState(false);
+  const [authMode, setAuthMode] = useState<AuthMode>(null);
+  const [authName, setAuthName] = useState("");
+  const [authEmail, setAuthEmail] = useState("");
+  const [authBusy, setAuthBusy] = useState(false);
+  const [authLinkSent, setAuthLinkSent] = useState(false);
+  const [authMessage, setAuthMessage] = useState("");
   const [chatMenu, setChatMenu] = useState<string | null>(null);
   const [historyReady, setHistoryReady] = useState(false);
   const [historyWritable, setHistoryWritable] = useState(false);
@@ -118,6 +144,44 @@ export default function Page() {
         setStorageError(error instanceof Error ? error.message : "Não foi possível abrir o histórico local.");
         setHistoryReady(true);
       });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    fetch("/api/auth/session", { cache: "no-store" })
+      .then(readJson)
+      .then((snapshot: unknown) => {
+        if (!active || !snapshot || typeof snapshot !== "object") return;
+        const auth = snapshot as AuthSnapshot;
+        setAuthSnapshot(auth);
+        setAuthName(auth.displayName || "");
+        if (!auth.displayName) setAuthMode("profile");
+        setAuthReady(true);
+      })
+      .catch((error: unknown) => {
+        if (!active) return;
+        setStatus(error instanceof Error ? error.message : "Não foi possível carregar a conta.");
+        setStatusKind("error");
+        setAuthReady(true);
+      });
+    const accountResult = new URLSearchParams(window.location.search).get("account");
+    if (accountResult === "verified") {
+      setStatus("E-mail confirmado. A tua conta AKIRA está pronta.");
+      setStatusKind("success");
+      window.history.replaceState({}, "", window.location.pathname);
+    } else if (accountResult === "expired-link" || accountResult === "invalid-link") {
+      setStatus("Este link de acesso é inválido ou expirou. Pede um novo link.");
+      setStatusKind("error");
+      setAuthMode("account");
+      window.history.replaceState({}, "", window.location.pathname);
+    } else if (accountResult === "verification-error") {
+      setStatus("Não foi possível confirmar o link agora. Tenta novamente.");
+      setStatusKind("error");
+      window.history.replaceState({}, "", window.location.pathname);
+    }
     return () => {
       active = false;
     };
@@ -284,6 +348,15 @@ export default function Page() {
   async function send(text?: string) {
     const content = (text ?? input).trim();
     if ((!content && !attachment) || busy) return;
+    if (!authReady) return;
+    if (!authSnapshot?.displayName) {
+      setAuthMode("profile");
+      return;
+    }
+    if (!authSnapshot.authenticated && authSnapshot.guestMessagesUsed >= authSnapshot.guestMessageLimit) {
+      setAuthMode("account");
+      return;
+    }
     if (imgMode && !content) {
       setStatus("Escreve uma descrição para a imagem que queres criar.");
       setStatusKind("error");
@@ -332,6 +405,11 @@ export default function Page() {
           throw new Error("A AKIRA não devolveu uma imagem válida.");
         }
         pushMessage(chatId, makeMessage("assistant", "A imagem está pronta.", { image: result.image }));
+        if (!authSnapshot.authenticated) {
+          const guestMessagesUsed = authSnapshot.guestMessagesUsed + 1;
+          setAuthSnapshot((current) => current ? { ...current, guestMessagesUsed } : current);
+          if (guestMessagesUsed >= authSnapshot.guestMessageLimit) setAuthMode("account");
+        }
         setImgMode(false);
       } else {
         let chatMessage = content || (attachment?.text ? `Analisa o ficheiro ${attachment.name}.` : "Descreve esta imagem em detalhe.");
@@ -378,13 +456,73 @@ export default function Page() {
           throw new Error("A AKIRA devolveu uma resposta inválida.");
         }
         pushMessage(chatId, makeMessage("assistant", result.reply));
+        if (!authSnapshot.authenticated) {
+          const guestMessagesUsed = authSnapshot.guestMessagesUsed + 1;
+          setAuthSnapshot((current) => current ? { ...current, guestMessagesUsed } : current);
+          if (guestMessagesUsed >= authSnapshot.guestMessageLimit) setAuthMode("account");
+        }
       }
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "O pedido à AKIRA falhou.");
-      setStatusKind("error");
+      if (error instanceof AccountRequiredError) {
+        setChats((current) => current.map((chat) =>
+          chat.id === chatId
+            ? { ...chat, messages: chat.messages.filter((message) => message.id !== userMessage.id) }
+            : chat,
+        ));
+        setInput(content);
+        setAttachment(attachment);
+        setAuthMode("account");
+        setAuthMessage(error.message);
+      } else {
+        setStatus(error instanceof Error ? error.message : "O pedido à AKIRA falhou.");
+        setStatusKind("error");
+      }
     } finally {
       setBusy(false);
       inputRef.current?.focus();
+    }
+  }
+
+  async function saveName(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setAuthBusy(true);
+    setAuthMessage("");
+    try {
+      const response = await fetch("/api/auth/profile", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ displayName: authName }),
+      });
+      const snapshot = await readJson(response) as AuthSnapshot;
+      setAuthSnapshot(snapshot);
+      setAuthName(snapshot.displayName || authName.trim());
+      setAuthMode(null);
+    } catch (error) {
+      setAuthMessage(error instanceof Error ? error.message : "Não foi possível guardar o teu nome.");
+    } finally {
+      setAuthBusy(false);
+    }
+  }
+
+  async function requestMagicLink(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setAuthBusy(true);
+    setAuthMessage("");
+    try {
+      const response = await fetch("/api/auth/magic-link", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ displayName: authName, email: authEmail }),
+      });
+      const result = await readJson(response);
+      setAuthLinkSent(true);
+      setAuthMessage(result && typeof result === "object" && "message" in result && typeof result.message === "string"
+        ? result.message
+        : "Enviámos um link de acesso. Consulta a tua caixa de entrada.");
+    } catch (error) {
+      setAuthMessage(error instanceof Error ? error.message : "Não foi possível enviar o link de acesso.");
+    } finally {
+      setAuthBusy(false);
     }
   }
 
@@ -515,6 +653,20 @@ export default function Page() {
         </div>
 
         <div className="side-foot">
+          <a
+            className="softedge-card"
+            href="https://softedge-corporation.up.railway.app/"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="Visitar SoftEdge Corporation, abre numa nova aba"
+          >
+            <span className="softedge-symbol"><Sparkles size={16} /></span>
+            <span className="softedge-copy">
+              <strong>Desenvolvido pela SoftEdge</strong>
+              <small>Software que transforma negócios</small>
+            </span>
+            <ArrowUpRight className="softedge-arrow" size={15} />
+          </a>
           <a className="plans-link" href="/plans"><Sparkles size={14} /> Planos de assinatura</a>
           {chats.length > 0 && (
             <>
@@ -522,11 +674,21 @@ export default function Page() {
               <button className="clear-history" onClick={clearHistory}><Trash2 size={14} /> Limpar histórico</button>
             </>
           )}
-          <div className="profile-row">
+          <button className="profile-row account-profile-button" onClick={() => {
+            setAuthMode(authSnapshot?.authenticated ? "account" : "profile");
+            setAuthName(authSnapshot?.displayName || "");
+            setAuthLinkSent(false);
+            setAuthMessage("");
+          }}>
             <span className="profile-avatar">A</span>
-            <span><strong>AKIRA SOFTEDGE</strong><small>Histórico neste navegador</small></span>
+            <span>
+              <strong>{authSnapshot?.displayName || "A TUA CONTA"}</strong>
+              <small>{authSnapshot?.email || (authSnapshot
+                ? `${Math.min(authSnapshot.guestMessagesUsed, authSnapshot.guestMessageLimit)}/${authSnapshot.guestMessageLimit} mensagens grátis`
+                : "A carregar conta…")}</small>
+            </span>
             <span className="profile-dot" aria-hidden="true" />
-          </div>
+          </button>
         </div>
       </aside>
 
@@ -542,7 +704,15 @@ export default function Page() {
             <ChevronDown className="model-chevron" size={14} />
           </div>
           <div className="topbar-right">
-            <span className="space-status"><span /> SOFTEDGE</span>
+            <a
+              className="space-status softedge-top-link"
+              href="https://softedge-corporation.up.railway.app/"
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="Visitar SoftEdge Corporation, abre numa nova aba"
+            >
+              <span /> SOFTEDGE <ArrowUpRight size={12} />
+            </a>
             <button className="topbar-new-chat" onClick={newChat}><MessageSquarePlus size={15} /> Nova conversa</button>
           </div>
         </header>
@@ -552,8 +722,8 @@ export default function Page() {
             <div className="empty">
               <div className="hero-mark"><Logo size={92} /></div>
               <span className="hero-overline"><span /> INTELIGÊNCIA PARA AS TUAS IDEIAS</span>
-              <h1>Como posso <em>te ajudar?</em></h1>
-              <p className="hero-caption">Pergunta, imagina, cria. Vamos descobrir juntos.</p>
+              <h1>{authSnapshot?.displayName ? <>Olá, <em>{authSnapshot.displayName}</em>.</> : <>Como posso <em>te ajudar?</em></>}</h1>
+              <p className="hero-caption">{authSnapshot?.displayName ? "O que vamos explorar hoje?" : "Pergunta, imagina, cria. Vamos descobrir juntos."}</p>
               <div className="suggestion-grid">
                 {suggestions.map(({ icon: Icon, label, text }) => (
                   <button className="suggestion-card" key={label} onClick={() => chooseSuggestion(text)}>
@@ -719,6 +889,81 @@ export default function Page() {
           <p className="composer-footer"><Clock3 size={12} /> A AKIRA pode cometer erros. Confirma informações importantes.</p>
         </div>
       </main>
+      {authMode && (
+        <div className="account-overlay" role="presentation">
+          <section className="account-dialog" role="dialog" aria-modal="true" aria-labelledby="account-title">
+            <div className="account-dialog-brand"><Logo size={38} /><span>AKIRA</span></div>
+            {authMode === "profile" ? (
+              <>
+                <span className="account-eyebrow">UM ESPAÇO TEU</span>
+                <h2 id="account-title">Como queres que a AKIRA te chame?</h2>
+                <p>Escolhe um nome. Podes conversar sem conta durante as primeiras cinco mensagens.</p>
+                <form onSubmit={(event) => void saveName(event)}>
+                  <label htmlFor="akira-display-name">O teu nome</label>
+                  <input
+                    id="akira-display-name"
+                    autoFocus
+                    autoComplete="nickname"
+                    maxLength={40}
+                    minLength={2}
+                    value={authName}
+                    onChange={(event) => setAuthName(event.target.value)}
+                    placeholder="Por exemplo, Alex"
+                    required
+                  />
+                  {authMessage && <div className="account-error" role="alert">{authMessage}</div>}
+                  <button className="account-submit" type="submit" disabled={authBusy || authName.trim().length < 2}>
+                    {authBusy ? <LoaderCircle className="spin" size={16} /> : "Começar a conversar"}
+                  </button>
+                </form>
+                <span className="account-privacy">Sem palavra-passe. O teu nome fica guardado para esta conta.</span>
+              </>
+            ) : (
+              <>
+                <span className="account-eyebrow">{authSnapshot?.authenticated ? "A TUA CONTA" : "CONTINUA COM A AKIRA"}</span>
+                <h2 id="account-title">{authSnapshot?.authenticated ? `Olá, ${authSnapshot.displayName}.` : "As cinco mensagens passaram num instante."}</h2>
+                <p>{authSnapshot?.authenticated
+                  ? `Sessão iniciada como ${authSnapshot.email}.`
+                  : "Cria a tua conta grátis com um link seguro enviado por e-mail. Sem palavra-passe."}</p>
+                {!authSnapshot?.authenticated && (
+                  <form onSubmit={(event) => void requestMagicLink(event)}>
+                    <label htmlFor="akira-account-name">Como queres que a AKIRA te chame?</label>
+                    <input
+                      id="akira-account-name"
+                      autoComplete="nickname"
+                      maxLength={40}
+                      minLength={2}
+                      value={authName}
+                      onChange={(event) => setAuthName(event.target.value)}
+                      required
+                    />
+                    <label htmlFor="akira-account-email">O teu e-mail</label>
+                    <input
+                      id="akira-account-email"
+                      type="email"
+                      autoComplete="email"
+                      maxLength={254}
+                      value={authEmail}
+                      onChange={(event) => { setAuthEmail(event.target.value); setAuthLinkSent(false); }}
+                      placeholder="tu@exemplo.com"
+                      required
+                    />
+                    {authMessage && <div className={authLinkSent ? "account-success" : "account-error"} role="status">{authMessage}</div>}
+                    <button className="account-submit" type="submit" disabled={authBusy || authLinkSent}>
+                      {authBusy ? <LoaderCircle className="spin" size={16} /> : authLinkSent ? "Link enviado" : "Enviar link de acesso"}
+                    </button>
+                  </form>
+                )}
+                {authSnapshot?.authenticated && <button className="account-submit" onClick={() => setAuthMode(null)}>Voltar ao chat</button>}
+                {!authSnapshot?.authenticated && (
+                  <button className="account-dismiss" onClick={() => setAuthMode(null)}>Agora não</button>
+                )}
+                <span className="account-privacy">Usamos o e-mail apenas para confirmar e proteger a tua conta.</span>
+              </>
+            )}
+          </section>
+        </div>
+      )}
     </div>
   );
 }

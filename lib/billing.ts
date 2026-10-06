@@ -18,7 +18,7 @@ const globalForBilling = globalThis as typeof globalThis & {
   akiraBillingSchema?: Promise<void>;
 };
 
-function pool(): Pool {
+export function billingPool(): Pool {
   const connectionString = process.env.DATABASE_URL;
   if (!connectionString) {
     throw new Error("A faturação ainda não está configurada: liga um PostgreSQL e define DATABASE_URL no Render.");
@@ -35,13 +35,16 @@ function pool(): Pool {
   return globalForBilling.akiraBillingPool;
 }
 
-async function ensureSchema(): Promise<void> {
+export async function ensureBillingSchema(): Promise<void> {
   if (!globalForBilling.akiraBillingSchema) {
     globalForBilling.akiraBillingSchema = (async () => {
-      const database = pool();
+      const database = billingPool();
       await database.query(`
         CREATE TABLE IF NOT EXISTS akira_billing_accounts (
           user_id UUID PRIMARY KEY,
+          email TEXT,
+          display_name TEXT,
+          email_verified_at TIMESTAMPTZ,
           stripe_customer_id TEXT UNIQUE,
           stripe_subscription_id TEXT UNIQUE,
           plan TEXT NOT NULL DEFAULT 'free' CHECK (plan IN ('free', 'pro', 'ultra')),
@@ -49,6 +52,11 @@ async function ensureSchema(): Promise<void> {
           current_period_end TIMESTAMPTZ,
           updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         );
+        ALTER TABLE akira_billing_accounts ADD COLUMN IF NOT EXISTS email TEXT;
+        ALTER TABLE akira_billing_accounts ADD COLUMN IF NOT EXISTS display_name TEXT;
+        ALTER TABLE akira_billing_accounts ADD COLUMN IF NOT EXISTS email_verified_at TIMESTAMPTZ;
+        CREATE UNIQUE INDEX IF NOT EXISTS akira_billing_accounts_email_unique
+          ON akira_billing_accounts (LOWER(email)) WHERE email IS NOT NULL;
         CREATE TABLE IF NOT EXISTS akira_billing_usage (
           user_id UUID NOT NULL REFERENCES akira_billing_accounts(user_id) ON DELETE CASCADE,
           metric TEXT NOT NULL CHECK (metric IN ('messages', 'files')),
@@ -59,6 +67,22 @@ async function ensureSchema(): Promise<void> {
         CREATE TABLE IF NOT EXISTS akira_billing_events (
           event_id TEXT PRIMARY KEY,
           received_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+        CREATE TABLE IF NOT EXISTS akira_auth_magic_links (
+          token_hash TEXT PRIMARY KEY,
+          user_id UUID NOT NULL REFERENCES akira_billing_accounts(user_id) ON DELETE CASCADE,
+          email TEXT NOT NULL,
+          display_name TEXT NOT NULL,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          expires_at TIMESTAMPTZ NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS akira_auth_magic_links_email_created
+          ON akira_auth_magic_links (LOWER(email), created_at DESC);
+        CREATE TABLE IF NOT EXISTS akira_auth_email_limits (
+          email TEXT PRIMARY KEY,
+          window_started_at TIMESTAMPTZ NOT NULL,
+          last_sent_at TIMESTAMPTZ NOT NULL,
+          request_count INTEGER NOT NULL CHECK (request_count > 0)
         );
         CREATE TABLE IF NOT EXISTS akira_shared_messages (
           id UUID PRIMARY KEY,
@@ -123,38 +147,52 @@ function currentPeriod(period: "day" | "month"): string {
 
 async function activePlan(client: PoolClient, userId: string): Promise<PlanId> {
   await client.query("INSERT INTO akira_billing_accounts (user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING", [userId]);
-  const result = await client.query<{ plan: PlanId; subscription_status: string }>(
-    "SELECT plan, subscription_status FROM akira_billing_accounts WHERE user_id = $1",
+  const result = await client.query<{ plan: PlanId; subscription_status: string; email: string | null; display_name: string | null }>(
+    "SELECT plan, subscription_status, email, display_name FROM akira_billing_accounts WHERE user_id = $1",
     [userId],
   );
   const row = result.rows[0];
-  if (!row || !["active", "trialing"].includes(row.subscription_status)) return "free";
+  if (!row || !row.email || !["active", "trialing"].includes(row.subscription_status)) return "free";
   return row.plan;
 }
 
 export async function planSnapshot(userId: string) {
-  await ensureSchema();
-  const database = pool();
+  await ensureBillingSchema();
+  const database = billingPool();
   const client = await database.connect();
   try {
     const plan = await activePlan(client, userId);
     const limits = PLAN_LIMITS[plan];
-    const periodStart = currentPeriod(limits.period);
+    const account = await client.query<{ email: string | null }>(
+      "SELECT email FROM akira_billing_accounts WHERE user_id = $1",
+      [userId],
+    );
+    const isGuest = !account.rows[0]?.email;
+    const today = currentPeriod("day");
     const usage = await client.query<{ metric: "messages" | "files"; usage_count: number }>(
-      "SELECT metric, usage_count FROM akira_billing_usage WHERE user_id = $1 AND period_start = $2",
-      [userId, periodStart],
+      `SELECT metric, usage_count
+       FROM akira_billing_usage
+       WHERE user_id = $1 AND (
+         (metric = 'messages' AND period_start = $2) OR
+         (metric = 'files' AND period_start = $3)
+       )`,
+      [userId, isGuest ? "1970-01-01" : currentPeriod(limits.period), today],
     );
     const used = { messages: 0, files: 0 };
     for (const row of usage.rows) used[row.metric] = Number(row.usage_count);
-    return { plan, limits: { messages: limits.messages, files: limits.files, period: limits.period }, used };
+    return {
+      plan,
+      limits: { messages: isGuest ? 5 : limits.messages, files: limits.files, period: isGuest ? "lifetime" as const : limits.period },
+      used,
+    };
   } finally {
     client.release();
   }
 }
 
 export async function getBillingCustomer(userId: string): Promise<string | null> {
-  await ensureSchema();
-  const result = await pool().query<{ stripe_customer_id: string | null }>(
+  await ensureBillingSchema();
+  const result = await billingPool().query<{ stripe_customer_id: string | null }>(
     "SELECT stripe_customer_id FROM akira_billing_accounts WHERE user_id = $1",
     [userId],
   );
@@ -162,14 +200,24 @@ export async function getBillingCustomer(userId: string): Promise<string | null>
 }
 
 export async function consumeUsage(userId: string, metric: "messages" | "files") {
-  await ensureSchema();
-  const client = await pool().connect();
+  await ensureBillingSchema();
+  const client = await billingPool().connect();
   try {
     await client.query("BEGIN");
     const plan = await activePlan(client, userId);
+    const registered = await client.query<{ email: string | null; display_name: string | null }>(
+      "SELECT email, display_name FROM akira_billing_accounts WHERE user_id = $1",
+      [userId],
+    );
+    const account = registered.rows[0];
+    if (!account?.display_name && metric === "messages") {
+      await client.query("COMMIT");
+      return { allowed: false as const, plan, limit: 5, requiresAccount: false, requiresProfile: true };
+    }
+    const isGuest = !account?.email;
     const limits = PLAN_LIMITS[plan];
-    const limit = limits[metric];
-    const periodStart = currentPeriod(limits.period);
+    const limit = metric === "messages" && isGuest ? 5 : limits[metric];
+    const periodStart = isGuest && metric === "messages" ? "1970-01-01" : currentPeriod(limits.period);
     const updated = await client.query(
       `INSERT INTO akira_billing_usage (user_id, metric, period_start, usage_count)
        VALUES ($1, $2, $3, 1)
@@ -181,10 +229,10 @@ export async function consumeUsage(userId: string, metric: "messages" | "files")
     );
     if (!updated.rowCount) {
       await client.query("COMMIT");
-      return { allowed: false as const, plan, limit };
+      return { allowed: false as const, plan, limit, requiresAccount: metric === "messages" && isGuest, requiresProfile: false };
     }
     await client.query("COMMIT");
-    return { allowed: true as const, plan, limit };
+    return { allowed: true as const, plan, limit, requiresAccount: false, requiresProfile: false };
   } catch (error) {
     await client.query("ROLLBACK");
     throw error;
@@ -213,14 +261,14 @@ function nestedText(value: unknown, ...keys: string[]): string | null {
 }
 
 export async function applyStripeEvent(event: Record<string, unknown>): Promise<void> {
-  await ensureSchema();
+  await ensureBillingSchema();
   const eventId = textField(event.id);
   const eventType = textField(event.type);
   const data = event.data as Record<string, unknown> | undefined;
   const object = data?.object as Record<string, unknown> | undefined;
   if (!eventId || !eventType || !object) throw new Error("Evento Stripe incompleto.");
 
-  const client = await pool().connect();
+  const client = await billingPool().connect();
   try {
     await client.query("BEGIN");
     const inserted = await client.query(
@@ -290,10 +338,10 @@ export async function applyStripeEvent(event: Record<string, unknown>): Promise<
 }
 
 export async function createSharedMessage(content: string): Promise<string> {
-  await ensureSchema();
+  await ensureBillingSchema();
   const id = randomUUID();
-  await pool().query("DELETE FROM akira_shared_messages WHERE expires_at <= NOW()");
-  await pool().query(
+  await billingPool().query("DELETE FROM akira_shared_messages WHERE expires_at <= NOW()");
+  await billingPool().query(
     "INSERT INTO akira_shared_messages (id, content, expires_at) VALUES ($1, $2, NOW() + INTERVAL '90 days')",
     [id, content],
   );
@@ -302,8 +350,8 @@ export async function createSharedMessage(content: string): Promise<string> {
 
 export async function loadSharedMessage(id: string): Promise<string | null> {
   if (!/^[0-9a-f-]{36}$/i.test(id)) return null;
-  await ensureSchema();
-  const result = await pool().query<{ content: string }>(
+  await ensureBillingSchema();
+  const result = await billingPool().query<{ content: string }>(
     "SELECT content FROM akira_shared_messages WHERE id = $1 AND expires_at > NOW()",
     [id],
   );

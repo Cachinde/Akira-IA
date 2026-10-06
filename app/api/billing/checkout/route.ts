@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getAuthSnapshot } from "@/lib/auth";
 import { getOrCreateUser, planSnapshot, setUserCookie, type PaidPlan } from "@/lib/billing";
 
 export const runtime = "nodejs";
@@ -33,6 +34,13 @@ export async function POST(request: NextRequest) {
 
   try {
     const identity = getOrCreateUser(request);
+    const account = await getAuthSnapshot(identity.userId);
+    if (!account.authenticated) {
+      return NextResponse.json(
+        { error: "Confirma primeiro o teu e-mail para associar a assinatura à tua conta." },
+        { status: 403 },
+      );
+    }
     const current = await planSnapshot(identity.userId);
     if (current.plan !== "free") {
       return NextResponse.json({ error: "Já tens uma assinatura ativa. Gere-a no portal de faturação." }, { status: 409 });

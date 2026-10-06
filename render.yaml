@@ -25,3 +25,17 @@ services:
         sync: false
       - key: STRIPE_PRICE_ULTRA
         sync: false
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        sync: false
+      - key: SMTP_USERNAME
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: SMTP_ENCRYPTION
+        sync: false
+      - key: SMTP_FROM_EMAIL
+        sync: false
+      - key: SMTP_FROM_NAME
+        value: AKIRA — SoftEdge Corporation

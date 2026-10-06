@@ -134,7 +134,16 @@ button:disabled { cursor: not-allowed; }
 .side-foot > .clear-history:hover { color: #e6aaaa; }
 .plans-link { display: flex; min-height: 33px; align-items: center; gap: 8px; padding: 0 9px; border: 1px solid rgba(199,183,255,.13); border-radius: 8px; background: rgba(174,148,255,.055); color: #cbbdf4; font-size: 10px; text-decoration: none; transition: background .16s ease, border-color .16s ease; }
 .plans-link:hover { border-color: rgba(199,183,255,.27); background: rgba(174,148,255,.11); }
+.softedge-card { position: relative; display: flex; min-width: 0; align-items: center; gap: 9px; margin: 2px 0 5px; padding: 10px 9px; overflow: hidden; border: 1px solid rgba(199,183,255,.14); border-radius: 11px; background: radial-gradient(ellipse at 8% 0%,rgba(169,144,225,.13),transparent 68%),linear-gradient(120deg,rgba(255,255,255,.025),rgba(255,255,255,.008)); color: inherit; text-decoration: none; transition: border-color .18s ease, background .18s ease, transform .18s ease; }
+.softedge-card:hover { transform: translateY(-1px); border-color: rgba(199,183,255,.32); background: radial-gradient(ellipse at 8% 0%,rgba(169,144,225,.2),transparent 68%),#1b1a1f; }
+.softedge-symbol { display: grid; width: 31px; height: 31px; flex: 0 0 auto; place-items: center; border: 1px solid rgba(199,183,255,.2); border-radius: 9px; background: linear-gradient(145deg,rgba(174,148,255,.18),rgba(174,148,255,.055)); color: #d6c9fa; }
+.softedge-copy { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 3px; }
+.softedge-copy strong { color: #e2dcec; font-size: 9px; font-weight: 600; }
+.softedge-copy small { overflow: hidden; color: #898391; font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
+.softedge-arrow { flex: 0 0 auto; color: #9183b2; }
 .profile-row { display: flex; align-items: center; gap: 9px; margin-top: 7px; padding: 12px 5px 2px; border-top: 1px solid var(--line); }
+.account-profile-button { width: 100%; border-right: 0; border-bottom: 0; border-left: 0; background: transparent; color: inherit; cursor: pointer; font: inherit; text-align: left; transition: background .16s ease; }
+.account-profile-button:hover { border-radius: 8px; background: rgba(255,255,255,.035); }
 .profile-avatar { display: grid; width: 31px; height: 31px; flex: 0 0 auto; place-items: center; border: 1px solid rgba(199,183,255,.19); border-radius: 10px; background: linear-gradient(145deg,#443754,#25212d); color: #e3d8ff; font-family: "Manrope", sans-serif; font-size: 13px; font-weight: 700; }
 .profile-row > span:nth-child(2) { display: flex; flex: 1; flex-direction: column; gap: 3px; }
 .profile-row strong { color: #ddd9e1; font-size: 10px; letter-spacing: .07em; }
@@ -149,6 +158,8 @@ button:disabled { cursor: not-allowed; }
 .model > span:last-child { color: #96919f; font-weight: 500; letter-spacing: .14em; }
 .model-chevron { color: #716d78; }
 .space-status { display: inline-flex; align-items: center; gap: 7px; color: #9a97a1; font-size: 9px; font-weight: 700; letter-spacing: .12em; }
+.softedge-top-link { min-height: 30px; padding: 0 7px; border: 1px solid transparent; border-radius: 8px; text-decoration: none; transition: color .16s ease, border-color .16s ease, background .16s ease; }
+.softedge-top-link:hover { border-color: rgba(199,183,255,.16); background: rgba(199,183,255,.05); color: #d7c9f9; }
 .space-status > span { background: var(--lilac); box-shadow: 0 0 9px rgba(199,183,255,.4); }
 .topbar-new-chat { display: none; align-items: center; gap: 7px; margin-left: 12px; padding: 7px 10px; border: 1px solid var(--line); border-radius: 9px; background: #1d1d20; color: #cbc7d1; cursor: pointer; font-size: 10px; }
 .topbar-new-chat:hover { border-color: var(--line-strong); background: var(--surface-raised); }
@@ -298,6 +309,35 @@ button:disabled { cursor: not-allowed; }
 .share-missing h1 { margin: 16px 0 5px; color: #eae6ef; font-size: 19px; }
 .share-missing p, .share-footer { color: #89848f; font-size: 10px; }
 .share-footer { text-align: center; }
+.account-overlay { position: fixed; inset: 0; z-index: 50; display: grid; overflow-y: auto; place-items: center; padding: max(20px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(20px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); background: rgba(7,7,9,.78); backdrop-filter: blur(12px); animation: float-in .18s ease both; }
+.account-dialog { width: min(100%, 420px); max-height: 100%; overflow-y: auto; padding: 30px; border: 1px solid rgba(199,183,255,.18); border-radius: 20px; background: radial-gradient(ellipse at 50% 0%,rgba(156,126,212,.13),transparent 48%),#19191c; box-shadow: 0 25px 90px rgba(0,0,0,.55); }
+.account-dialog-brand { display: flex; align-items: center; gap: 9px; margin-bottom: 27px; color: #e5def3; font-family: "Manrope",sans-serif; font-size: 11px; font-weight: 700; letter-spacing: .16em; }
+.account-eyebrow { color: #b9a5e9; font-size: 9px; font-weight: 700; letter-spacing: .18em; }
+.account-dialog h2 { margin: 9px 0 9px; color: #f1edf5; font-family: "Manrope",sans-serif; font-size: clamp(21px,5vw,25px); font-weight: 600; letter-spacing: -.035em; line-height: 1.3; }
+.account-dialog > p { margin: 0 0 21px; color: #a19ba8; font-size: 12px; line-height: 1.65; }
+.account-dialog form { display: flex; flex-direction: column; gap: 8px; }
+.account-dialog form label { margin: 7px 0 1px; color: #c5bfcd; font-size: 10px; font-weight: 600; }
+.account-dialog form input { width: 100%; min-width: 0; min-height: 44px; padding: 0 12px; border: 1px solid rgba(255,255,255,.1); border-radius: 10px; outline: none; background: #121214; color: #f1edf5; font-size: 16px; }
+.account-dialog form input::placeholder { color: #706b77; }
+.account-dialog form input:focus { border-color: rgba(199,183,255,.48); box-shadow: 0 0 0 3px rgba(199,183,255,.07); }
+.account-submit { display: flex; width: 100%; min-height: 44px; align-items: center; justify-content: center; gap: 8px; margin-top: 8px; border: 0; border-radius: 10px; background: #cbbdf4; color: #25202f; cursor: pointer; font-size: 11px; font-weight: 700; transition: background .16s ease, opacity .16s ease; }
+.account-submit:hover:not(:disabled) { background: #ddd2ff; }
+.account-submit:disabled { cursor: not-allowed; opacity: .55; }
+.account-dismiss { display: block; margin: 13px auto 0; padding: 7px 12px; border: 0; background: transparent; color: #a09aa7; cursor: pointer; font-size: 10px; }
+.account-dismiss:hover { color: #e6e1eb; }
+.account-privacy { display: block; margin-top: 17px; color: #77727e; font-size: 9px; line-height: 1.55; text-align: center; }
+.account-error, .account-success { margin: 5px 0; padding: 9px 10px; border: 1px solid rgba(225,145,145,.18); border-radius: 8px; background: rgba(112,47,47,.13); color: #e5adad; font-size: 10px; line-height: 1.55; overflow-wrap: anywhere; }
+.account-success { border-color: rgba(155,225,201,.18); background: rgba(46,103,83,.12); color: #a9dfcb; }
+.account-verify-page { display: grid; width: 100%; min-height: 100dvh; place-items: center; padding: max(20px,env(safe-area-inset-top)) 16px max(20px,env(safe-area-inset-bottom)); background: radial-gradient(ellipse at 50% -15%,rgba(146,117,205,.13),transparent 48%),var(--bg); }
+.account-verify-card { width: min(100%,430px); padding: 30px; border: 1px solid rgba(199,183,255,.18); border-radius: 20px; background: #19191c; box-shadow: 0 25px 90px rgba(0,0,0,.45); }
+.account-verify-brand { display: flex; align-items: center; gap: 9px; margin-bottom: 35px; color: #e5def3; font-family: "Manrope",sans-serif; font-size: 11px; font-weight: 700; letter-spacing: .16em; text-decoration: none; }
+.account-verify-icon { display: grid; width: 44px; height: 44px; place-items: center; margin-bottom: 19px; border: 1px solid rgba(199,183,255,.19); border-radius: 13px; background: rgba(174,148,255,.09); color: #cbbdf4; }
+.account-verify-card h1 { margin: 8px 0; color: #f1edf5; font-family: "Manrope",sans-serif; font-size: 24px; letter-spacing: -.035em; }
+.account-verify-card p { margin: 0 0 21px; color: #a19ba8; font-size: 12px; line-height: 1.65; }
+.account-verify-card form { margin-bottom: 14px; }
+.account-verify-link { text-decoration: none; }
+.account-verify-back { display: inline-flex; align-items: center; gap: 6px; color: #918b98; font-size: 10px; text-decoration: none; }
+.account-verify-back:hover { color: #ded8e8; }
 .sidebar-scrim { display: none; }
 
 @keyframes spin { to { transform: rotate(360deg); } }
@@ -323,6 +363,8 @@ button:disabled { cursor: not-allowed; }
   .topbar { height: 54px; gap: 6px; padding: 0 max(10px, env(safe-area-inset-right)) 0 max(10px, env(safe-area-inset-left)); }
   .topbar-left { gap: 6px; }
   .topbar-right { min-width: 0; gap: 4px; }
+  .softedge-top-link { gap: 4px; padding: 0 5px; font-size: 8px; letter-spacing: .08em; }
+  .softedge-top-link > svg { width: 11px; }
   .thread { padding: 64px 16px max(205px, calc(205px + env(safe-area-inset-bottom))); }
   .thread-heading { min-width: 0; overflow-wrap: anywhere; }
   .thread-heading h1 { overflow-wrap: anywhere; }
@@ -348,6 +390,9 @@ button:disabled { cursor: not-allowed; }
 }
 
 @media (max-width: 420px) {
+  .account-overlay { padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left)); }
+  .account-dialog { padding: 24px 20px; border-radius: 17px; }
+  .account-dialog-brand { margin-bottom: 22px; }
   .plans-page, .share-page { padding: 17px 14px; }
   .plans-intro { margin-top: 48px; }
   .plan-grid { grid-template-columns: 1fr; }

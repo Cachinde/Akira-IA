@@ -37,7 +37,9 @@ No Render, cria um **Web Service** com runtime Docker na pasta `bot_ui`, ou apli
 
 ## Assinaturas, limites e ficheiros
 
-A página `/plans` apresenta três planos pagos em USD: Gratuito (20 mensagens e 3 ficheiros/dia), Pro ($5/mês; 1.000 mensagens e 100 ficheiros/mês) e Ultra ($12/mês; 5.000 mensagens e 500 ficheiros/mês). As quotas são aplicadas no servidor com contadores atómicos PostgreSQL. O plano Gratuito também precisa do PostgreSQL para manter a quota diária.
+A primeira visita pede apenas um nome de tratamento; esse nome personaliza a saudação e fica associado ao perfil. Sem conta, a pessoa pode enviar cinco mensagens no total. Depois, é necessário confirmar um e-mail através de um link de acesso sem senha, com validade de 15 minutos. A conta confirmada tem o limite Gratuito de 20 mensagens e 3 ficheiros por dia. O envio de links é limitado por e-mail (1 por minuto e 5 por hora). O histórico de conversas continua apenas no armazenamento local desse navegador; a conta não sincroniza o histórico entre dispositivos.
+
+A página `/plans` apresenta três planos pagos em USD: Gratuito (5 mensagens de teste sem conta; depois de criar conta, 20 mensagens e 3 ficheiros/dia), Pro ($5/mês; 1.000 mensagens e 100 ficheiros/mês) e Ultra ($12/mês; 5.000 mensagens e 500 ficheiros/mês). As quotas são aplicadas no servidor com contadores atómicos PostgreSQL. O plano Gratuito também precisa do PostgreSQL para manter as quotas.
 
 Para ativar faturação:
 
@@ -47,7 +49,9 @@ Para ativar faturação:
 4. Regista no Stripe o webhook `https://akira-ia.onrender.com/api/billing/webhook` e subscreve `checkout.session.completed`, `customer.subscription.created`, `customer.subscription.updated` e `customer.subscription.deleted`. Define o signing secret fornecido pelo Stripe em `STRIPE_WEBHOOK_SECRET`.
 5. Ativa o Customer Portal no Stripe para permitir que os clientes gerem/cancelem as assinaturas.
 
-Checkout, portal e webhook usam HTTPS e a assinatura oficial Stripe; eventos são idempotentes. As quotas e partilhas de respostas (90 dias) necessitam de PostgreSQL. A identidade de faturação atual é um cookie seguro e assinado do navegador, sem início de sessão: as quotas e a assinatura ficam associadas a esse navegador; apagar os cookies ou mudar de dispositivo não recupera a conta. Para identificação persistente entre dispositivos será necessário acrescentar autenticação.
+Checkout, portal e webhook usam HTTPS e a assinatura oficial Stripe; eventos são idempotentes. As quotas, contas e partilhas de respostas (90 dias) necessitam de PostgreSQL. A sessão usa um cookie seguro e assinado; as contas confirmadas podem ser recuperadas noutro dispositivo pedindo um novo link por e-mail.
+
+O envio dos links de acesso usa SMTP. Configura no serviço Web do Render as variáveis `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_ENCRYPTION`, `SMTP_FROM_EMAIL` e, opcionalmente, `SMTP_FROM_NAME`. Para reutilizar o serviço de e-mail documentado na pasta da SoftEdge, copia **os valores SMTP** dessa configuração para o Web Service AKIRA no Render. As variáveis de Railway não são partilhadas automaticamente com Render; não copies a `DATABASE_URL` MySQL da SoftEdge, pois a AKIRA exige PostgreSQL.
 
 Anexos de imagem continuam a usar o Space AKIRAGPU. Também é possível enviar TXT, Markdown, CSV, JSON, PDF (até 30 páginas) e DOCX; os documentos são extraídos no servidor e enviados como contexto para o Space de conversa, com limite de 8 MB por ficheiro e 50.000 caracteres extraídos. A geração/análise de imagens também consome a quota de mensagens/ficheiros correspondente. Os ficheiros e conversas não são persistidos no servidor. Os links de partilha são públicos para quem os tiver e expiram após 90 dias.
 

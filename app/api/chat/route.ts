@@ -40,11 +40,26 @@ export async function POST(req: NextRequest) {
   try {
     const identity = getOrCreateUser(req);
     const usage = await consumeUsage(identity.userId, "messages");
-    if (!usage.allowed) {
-      return NextResponse.json(
-        { error: `Atingiste o limite de ${usage.limit} mensagens do plano ${usage.plan}.` },
-        { status: 429 },
+    if (usage.requiresProfile) {
+      const response = NextResponse.json(
+        { code: "profile_required", error: "Escolhe primeiro o nome que a AKIRA deve usar contigo." },
+        { status: 403 },
       );
+      if (identity.created) setUserCookie(response, identity.userId);
+      return response;
+    }
+    if (!usage.allowed) {
+      const response = NextResponse.json(
+        {
+          ...(usage.requiresAccount ? { code: "account_required" } : {}),
+          error: usage.requiresAccount
+            ? "As cinco mensagens grátis terminaram. Cria a tua conta gratuita para continuares."
+            : `Atingiste o limite de ${usage.limit} mensagens do plano ${usage.plan}.`,
+        },
+        { status: usage.requiresAccount ? 403 : 429 },
+      );
+      if (identity.created) setUserCookie(response, identity.userId);
+      return response;
     }
     const response = NextResponse.json(await apiChat(message, history));
     if (identity.created) setUserCookie(response, identity.userId);
