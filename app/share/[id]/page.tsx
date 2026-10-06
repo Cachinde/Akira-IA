@@ -15,15 +15,20 @@ async function sharedContent(params: Props["params"]): Promise<string | null> {
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const content = await sharedContent(params);
-  if (!content) return { title: "Partilha indisponível — AKIRA" };
+  if (!content) return { title: "Partilha indisponível", robots: { index: false, follow: false } };
+  const { id } = await params;
   const siteUrl = getPublicSiteUrl();
+  const pageUrl = new URL(`/share/${encodeURIComponent(id)}`, siteUrl).toString();
   const description = content.replace(/\s+/g, " ").slice(0, 180);
   const image = new URL("/akira-share-v2.png", siteUrl).toString();
   return {
-    title: "Uma resposta da AKIRA",
+    title: "Resposta partilhada",
     description,
+    alternates: { canonical: pageUrl },
+    robots: { index: false, follow: false },
     openGraph: {
       type: "article",
+      url: pageUrl,
       title: "Uma resposta da AKIRA",
       description,
       images: [{ url: image, width: 1200, height: 630, alt: "AKIRA — Assistente inteligente" }],

@@ -35,6 +35,12 @@ docker run --rm -p 3000:3000 -e HF_SPACE_ID=akra35567/Akiragpu akira-ui
 
 No Render, cria um **Web Service** com runtime Docker na pasta `bot_ui`, ou aplica o `render.yaml`. Configura `HF_TOKEN` nos Environment Variables apenas se precisares de autenticação/quota adicional nos Spaces. As credenciais usadas em runtime configuram-se em **Render Dashboard → serviço → Environment** (e, no caso do SSO, também no serviço Railway da SoftEdge); **não** em GitHub → Settings → Secrets and variables → Actions, que só fornece segredos a workflows. `NEXT_PUBLIC_SITE_URL` define o domínio absoluto usado nas pré-visualizações e links partilhados; o padrão é `https://akira-ia.onrender.com`. O serviço usa o `PORT` que o Render fornece e só fica healthy quando `/api/health/ready` confirma o PostgreSQL e o segredo de sessão. A rota `/api/health` continua disponível como liveness. A geração de links rejeita hosts de bind ou endereços privados como `0.0.0.0:10000` e recorre ao domínio público do Render/configurado.
 
+## Indexação nos motores de pesquisa
+
+A página inicial e `/plans` têm títulos e descrições próprios, URL canónico, metadados Open Graph/Twitter e dados estruturados `WebSite`, `Organization` e `SoftwareApplication`. `GET /robots.txt` orienta os crawlers e `GET /sitemap.xml` lista as páginas públicas; login, APIs e confirmação de conta não são páginas para indexar, e as respostas partilhadas são marcadas como `noindex`.
+
+Depois de publicar o deploy no domínio final, verifica `https://akira-ia.onrender.com/robots.txt` e `https://akira-ia.onrender.com/sitemap.xml`. Em seguida, adiciona e verifica a propriedade de domínio `akira-ia.onrender.com` no [Google Search Console](https://search.google.com/search-console/about), envia o sitemap `https://akira-ia.onrender.com/sitemap.xml` e usa a inspeção de URL para pedir a indexação da página inicial. A propriedade de domínio requer verificação DNS; o Search Console também oferece verificação por prefixo de URL. A descoberta e a posição dependem do rastreamento do Google, conteúdo útil e sinais externos: nenhum metadado ou pedido de indexação garante uma posição específica ou a primeira página.
+
 ## Variáveis de ambiente
 
 Define as variáveis no **Render Dashboard → AKIRA Web Service → Environment**. `render.yaml` já preenche os IDs públicos dos Spaces, os domínios e o nome do remetente. Preenche as restantes conforme as funcionalidades que queres ativar:

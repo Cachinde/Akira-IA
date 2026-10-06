@@ -708,7 +708,7 @@ export default function Page() {
             <button className="burger icon-button" onClick={() => setSideOpen(true)} aria-label="Abrir histórico">
               <Menu size={19} />
             </button>
-            <span className="model">AKIRA <span className="model-separator">/</span> <span>GPU</span></span>
+            <span className="model">AKIRA</span>
             <ChevronDown className="model-chevron" size={14} />
           </div>
           <div className="topbar-right">

@@ -4,7 +4,8 @@ import { ArrowLeft, MailCheck } from "lucide-react";
 import Logo from "@/components/Logo";
 
 export const metadata: Metadata = {
-  title: "Confirmar acesso — AKIRA",
+  title: "Confirmar acesso",
+  alternates: { canonical: "/account/verify" },
   robots: { index: false, follow: false },
 };
 
