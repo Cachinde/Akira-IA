@@ -50,11 +50,13 @@ export async function ensureBillingSchema(): Promise<void> {
           plan TEXT NOT NULL DEFAULT 'free' CHECK (plan IN ('free', 'pro', 'ultra')),
           subscription_status TEXT NOT NULL DEFAULT 'free',
           current_period_end TIMESTAMPTZ,
+          stripe_event_created_at BIGINT,
           updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         );
         ALTER TABLE akira_billing_accounts ADD COLUMN IF NOT EXISTS email TEXT;
         ALTER TABLE akira_billing_accounts ADD COLUMN IF NOT EXISTS display_name TEXT;
         ALTER TABLE akira_billing_accounts ADD COLUMN IF NOT EXISTS email_verified_at TIMESTAMPTZ;
+        ALTER TABLE akira_billing_accounts ADD COLUMN IF NOT EXISTS stripe_event_created_at BIGINT;
         CREATE UNIQUE INDEX IF NOT EXISTS akira_billing_accounts_email_unique
           ON akira_billing_accounts (LOWER(email)) WHERE email IS NOT NULL;
         CREATE TABLE IF NOT EXISTS akira_billing_usage (
@@ -83,6 +85,19 @@ export async function ensureBillingSchema(): Promise<void> {
           window_started_at TIMESTAMPTZ NOT NULL,
           last_sent_at TIMESTAMPTZ NOT NULL,
           request_count INTEGER NOT NULL CHECK (request_count > 0)
+        );
+        CREATE TABLE IF NOT EXISTS akira_auth_identities (
+          provider TEXT NOT NULL CHECK (provider IN ('google', 'softedge')),
+          subject TEXT NOT NULL,
+          user_id UUID NOT NULL REFERENCES akira_billing_accounts(user_id) ON DELETE CASCADE,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          PRIMARY KEY (provider, subject)
+        );
+        CREATE INDEX IF NOT EXISTS akira_auth_identities_user
+          ON akira_auth_identities (user_id);
+        CREATE TABLE IF NOT EXISTS akira_auth_sso_tokens (
+          token_id TEXT PRIMARY KEY,
+          expires_at TIMESTAMPTZ NOT NULL
         );
         CREATE TABLE IF NOT EXISTS akira_shared_messages (
           id UUID PRIMARY KEY,
@@ -199,6 +214,16 @@ export async function getBillingCustomer(userId: string): Promise<string | null>
   return result.rows[0]?.stripe_customer_id || null;
 }
 
+export async function saveBillingCustomer(userId: string, customerId: string): Promise<void> {
+  await ensureBillingSchema();
+  await billingPool().query(
+    `UPDATE akira_billing_accounts
+     SET stripe_customer_id = $2, updated_at = NOW()
+     WHERE user_id = $1 AND (stripe_customer_id IS NULL OR stripe_customer_id = $2)`,
+    [userId, customerId],
+  );
+}
+
 export async function consumeUsage(userId: string, metric: "messages" | "files") {
   await ensureBillingSchema();
   const client = await billingPool().connect();
@@ -284,49 +309,70 @@ export async function applyStripeEvent(event: Record<string, unknown>): Promise<
     const userId = textField(metadata.user_id) || textField(object.client_reference_id);
     const customerId = textField(object.customer);
     const subscriptionId = textField(object.subscription) || (eventType.startsWith("customer.subscription.") ? textField(object.id) : null);
+    const eventCreated = typeof event.created === "number" && Number.isSafeInteger(event.created)
+      ? event.created
+      : 0;
 
-    if (eventType === "checkout.session.completed") {
+    if (eventType === "checkout.session.completed" || eventType === "checkout.session.async_payment_succeeded") {
       if (userId && customerId && subscriptionId) {
         const metadataPlan = textField(metadata.plan);
-        const plan: PaidPlan = metadataPlan === "ultra" ? "ultra" : "pro";
+        if (metadataPlan !== "pro" && metadataPlan !== "ultra") {
+          throw new Error("O checkout Stripe não identifica um plano AKIRA válido.");
+        }
+        const plan: PaidPlan = metadataPlan;
         await client.query(
           `INSERT INTO akira_billing_accounts
-             (user_id, stripe_customer_id, stripe_subscription_id, plan, subscription_status, updated_at)
-           VALUES ($1, $2, $3, $4, $5, NOW())
+             (user_id, stripe_customer_id, stripe_subscription_id, plan, subscription_status, stripe_event_created_at, updated_at)
+           VALUES ($1, $2, $3, $4, $5, $6, NOW())
            ON CONFLICT (user_id) DO UPDATE SET
              stripe_customer_id = EXCLUDED.stripe_customer_id,
              stripe_subscription_id = EXCLUDED.stripe_subscription_id,
              plan = EXCLUDED.plan,
              subscription_status = EXCLUDED.subscription_status,
-             updated_at = NOW()`,
-          [userId, customerId, subscriptionId, plan, object.payment_status === "paid" || object.payment_status === "no_payment_required" ? "active" : "incomplete"],
+             stripe_event_created_at = EXCLUDED.stripe_event_created_at,
+             updated_at = NOW()
+           WHERE akira_billing_accounts.stripe_event_created_at IS NULL
+             OR akira_billing_accounts.stripe_event_created_at <= EXCLUDED.stripe_event_created_at`,
+          [userId, customerId, subscriptionId, plan, object.payment_status === "paid" || object.payment_status === "no_payment_required" ? "active" : "incomplete", eventCreated],
         );
       }
     } else if (eventType.startsWith("customer.subscription.")) {
       const resolvedUserId = userId || (customerId
         ? (await client.query<{ user_id: string }>("SELECT user_id FROM akira_billing_accounts WHERE stripe_customer_id = $1", [customerId])).rows[0]?.user_id
         : null);
-      if (resolvedUserId) {
+      if (!resolvedUserId) {
         const priceId = nestedText(object, "items", "data", "0", "price", "id");
-        const plan = planForPrice(priceId);
-        const status = textField(object.status) || "incomplete";
-        const periodEnd = typeof object.current_period_end === "number"
-          ? new Date(object.current_period_end * 1000).toISOString()
-          : null;
-        await client.query(
-          `INSERT INTO akira_billing_accounts
-             (user_id, stripe_customer_id, stripe_subscription_id, plan, subscription_status, current_period_end, updated_at)
-           VALUES ($1, $2, $3, $4, $5, $6, NOW())
-           ON CONFLICT (user_id) DO UPDATE SET
-             stripe_customer_id = COALESCE(EXCLUDED.stripe_customer_id, akira_billing_accounts.stripe_customer_id),
-             stripe_subscription_id = COALESCE(EXCLUDED.stripe_subscription_id, akira_billing_accounts.stripe_subscription_id),
-             plan = EXCLUDED.plan,
-             subscription_status = EXCLUDED.subscription_status,
-             current_period_end = EXCLUDED.current_period_end,
-             updated_at = NOW()`,
-          [resolvedUserId, customerId, textField(object.id), plan, status, periodEnd],
-        );
+        if (userId || planForPrice(priceId) !== "free") {
+          throw new Error("A assinatura Stripe ainda não está associada a uma conta AKIRA.");
+        }
+        await client.query("COMMIT");
+        return;
       }
+      const priceId = nestedText(object, "items", "data", "0", "price", "id");
+      const plan = planForPrice(priceId);
+      const status = textField(object.status) || "incomplete";
+      const periodEnd = typeof object.current_period_end === "number"
+        ? new Date(object.current_period_end * 1000).toISOString()
+        : null;
+      await client.query(
+        `INSERT INTO akira_billing_accounts
+           (user_id, stripe_customer_id, stripe_subscription_id, plan, subscription_status, current_period_end, stripe_event_created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+         ON CONFLICT (user_id) DO UPDATE SET
+           stripe_customer_id = COALESCE(EXCLUDED.stripe_customer_id, akira_billing_accounts.stripe_customer_id),
+           stripe_subscription_id = CASE
+             WHEN $5 IN ('canceled', 'incomplete_expired') THEN NULL
+             ELSE COALESCE(EXCLUDED.stripe_subscription_id, akira_billing_accounts.stripe_subscription_id)
+           END,
+           plan = EXCLUDED.plan,
+           subscription_status = EXCLUDED.subscription_status,
+           current_period_end = EXCLUDED.current_period_end,
+           stripe_event_created_at = EXCLUDED.stripe_event_created_at,
+           updated_at = NOW()
+         WHERE akira_billing_accounts.stripe_event_created_at IS NULL
+           OR akira_billing_accounts.stripe_event_created_at <= EXCLUDED.stripe_event_created_at`,
+        [resolvedUserId, customerId, textField(object.id), plan, status, periodEnd, eventCreated],
+      );
     }
     await client.query("COMMIT");
   } catch (error) {

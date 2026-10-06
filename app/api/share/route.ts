@@ -20,7 +20,7 @@ export async function POST(request: NextRequest) {
     const id = await createSharedMessage(content);
     return NextResponse.json({ url: new URL(`/share/${id}`, getPublicSiteUrl(request.url)).toString() });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Não foi possível criar a partilha.";
-    return NextResponse.json({ error: message }, { status: 503 });
+    console.error("Falha ao criar uma partilha AKIRA.", error);
+    return NextResponse.json({ error: "Não foi possível criar a partilha agora. Tenta novamente mais tarde." }, { status: 503 });
   }
 }

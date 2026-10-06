@@ -31,9 +31,12 @@ export async function POST(request: NextRequest) {
     if (identity.created) setUserCookie(response, identity.userId);
     return response;
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Não foi possível enviar o link de acesso.";
-    const status = message.startsWith("Espera um minuto") || message.startsWith("Atingiste o limite") ? 429 : 503;
+    const message = error instanceof Error ? error.message : "";
+    const rateLimited = message.startsWith("Espera um minuto") || message.startsWith("Atingiste o limite");
+    const status = rateLimited ? 429 : 503;
     console.error("Falha ao enviar link de acesso AKIRA.", error);
-    return NextResponse.json({ error: message }, { status });
+    return NextResponse.json({
+      error: rateLimited ? message : "O acesso por e-mail está temporariamente indisponível. Tenta novamente ou escolhe outro método.",
+    }, { status });
   }
 }

@@ -24,14 +24,39 @@ export default function PlansPage() {
     const response = await fetch("/api/billing", { cache: "no-store" });
     const result: unknown = await response.json();
     if (!response.ok) throw new Error(result && typeof result === "object" && "error" in result ? String(result.error) : "Não foi possível carregar os planos.");
-    setBilling(result as Billing);
+    const snapshot = result as Billing;
+    setBilling(snapshot);
+    return snapshot;
   }, []);
 
   useEffect(() => {
-    refresh().catch((reason: unknown) => setError(reason instanceof Error ? reason.message : "Não foi possível carregar os planos."));
     const params = new URLSearchParams(window.location.search);
-    if (params.get("checkout") === "success") setError("Pagamento recebido. A ativação pode demorar alguns segundos.");
-    else if (params.get("checkout") === "cancelled") setError("O checkout foi cancelado.");
+    const checkout = params.get("checkout");
+    let active = true;
+    if (checkout === "success") {
+      setError("Pagamento recebido. Estamos a confirmar a assinatura…");
+      const confirm = async () => {
+        for (let attempt = 0; attempt < 10 && active; attempt += 1) {
+          try {
+            const snapshot = await refresh();
+            if (snapshot.plan !== "free") {
+              setError("Assinatura ativa. Já podes aproveitar o teu plano.");
+              return;
+            }
+          } catch {
+            if (attempt === 9) setError("Pagamento recebido, mas ainda não conseguimos confirmar a assinatura. Atualiza esta página dentro de alguns instantes.");
+          }
+          await new Promise((resolve) => window.setTimeout(resolve, 2_000));
+        }
+        if (active) setError("Pagamento recebido. A confirmação está a demorar; atualiza a página dentro de alguns instantes.");
+      };
+      void confirm();
+    } else {
+      refresh().catch((reason: unknown) => setError(reason instanceof Error ? reason.message : "Não foi possível carregar os planos."));
+      if (checkout === "cancelled") setError("O checkout foi cancelado; não foi feita nenhuma cobrança.");
+    }
+    if (checkout) window.history.replaceState({}, "", window.location.pathname);
+    return () => { active = false; };
   }, [refresh]);
 
   async function submit(action: "pro" | "ultra" | "portal") {

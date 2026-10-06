@@ -1,0 +1,27 @@
+name: Render health check
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check Render readiness
+        env:
+          HEALTH_URL: ${{ vars.RENDER_HEALTH_URL }}
+        run: |
+          if [ -z "$HEALTH_URL" ]; then
+            HEALTH_URL="https://akira-ia.onrender.com/api/health/ready"
+          fi
+          case "$HEALTH_URL" in
+            https://*/api/health/ready) ;;
+            *)
+              echo "::error::RENDER_HEALTH_URL must be an HTTPS URL ending in /api/health/ready."
+              exit 1
+              ;;
+          esac
+          curl --fail --silent --show-error --max-time 90 --retry 2 --retry-all-errors --retry-delay 5 "$HEALTH_URL"

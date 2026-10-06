@@ -65,7 +65,7 @@ export async function POST(req: NextRequest) {
     if (identity.created) setUserCookie(response, identity.userId);
     return response;
   } catch (error) {
-    const detail = error instanceof Error ? error.message : "O pedido de imagem à AKIRA falhou.";
-    return NextResponse.json({ error: detail }, { status: 502 });
+    console.error("Falha ao processar o pedido de imagem da AKIRA.", error);
+    return NextResponse.json({ error: "Não foi possível concluir o pedido de imagem agora. Tenta novamente dentro de alguns instantes." }, { status: 503 });
   }
 }

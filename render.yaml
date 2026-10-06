@@ -3,7 +3,7 @@ services:
     name: akira-ui
     runtime: docker
     plan: free
-    healthCheckPath: /api/health
+    healthCheckPath: /api/health/ready
     envVars:
       - key: HF_SPACE_ID
         value: akra35567/Akiragpu
@@ -17,6 +17,14 @@ services:
         sync: false
       - key: BILLING_COOKIE_SECRET
         sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: AKIRA_SSO_SECRET
+        sync: false
+      - key: SOFTEDGE_SSO_URL
+        value: https://softedge-corporation.up.railway.app
       - key: STRIPE_SECRET_KEY
         sync: false
       - key: STRIPE_WEBHOOK_SECRET

@@ -19,7 +19,10 @@ function verifySignature(payload: string, header: string, secret: string): boole
 
 export async function POST(request: NextRequest) {
   const secret = process.env.STRIPE_WEBHOOK_SECRET;
-  if (!secret) return NextResponse.json({ error: "Webhook Stripe não configurado." }, { status: 503 });
+  if (!secret) {
+    console.error("Stripe webhook delivery cannot be verified because its signing secret is unavailable.");
+    return NextResponse.json({ error: "Webhook temporariamente indisponível." }, { status: 503 });
+  }
   const payload = await request.text();
   const signature = request.headers.get("stripe-signature") || "";
   if (!verifySignature(payload, signature, secret)) {

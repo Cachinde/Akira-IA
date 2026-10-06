@@ -168,7 +168,20 @@ export default function Page() {
         setAuthReady(true);
       });
     const accountResult = new URLSearchParams(window.location.search).get("account");
-    if (accountResult === "verified") {
+    const authResult = new URLSearchParams(window.location.search).get("auth");
+    if (authResult === "success") {
+      setStatus("Sessão iniciada. Bem-vindo à AKIRA.");
+      setStatusKind("success");
+      window.history.replaceState({}, "", window.location.pathname);
+    } else if (authResult === "error") {
+      setStatus("Não foi possível concluir a entrada. Tenta novamente ou escolhe outro método.");
+      setStatusKind("error");
+      window.history.replaceState({}, "", window.location.pathname);
+    } else if (authResult === "unavailable") {
+      setStatus("Este método de entrada está temporariamente indisponível. Podes entrar com o teu e-mail.");
+      setStatusKind("error");
+      window.history.replaceState({}, "", window.location.pathname);
+    } else if (accountResult === "verified") {
       setStatus("E-mail confirmado. A tua conta AKIRA está pronta.");
       setStatusKind("success");
       window.history.replaceState({}, "", window.location.pathname);
@@ -198,17 +211,6 @@ export default function Page() {
     if (messages.length === 0 && !busy) return;
     bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [activeId, messages.length, busy]);
-
-  useEffect(() => {
-    const ping = () => {
-      if (document.visibilityState !== "visible") return;
-      void fetch("/api/health", { cache: "no-store", keepalive: true }).catch((error: unknown) => {
-        console.warn("O ping de disponibilidade da AKIRA falhou.", error);
-      });
-    };
-    const interval = window.setInterval(ping, 5 * 60 * 1000);
-    return () => window.clearInterval(interval);
-  }, []);
 
   useEffect(() => {
     function onShortcut(event: globalThis.KeyboardEvent) {
@@ -668,6 +670,7 @@ export default function Page() {
             <ArrowUpRight className="softedge-arrow" size={15} />
           </a>
           <a className="plans-link" href="/plans"><Sparkles size={14} /> Planos de assinatura</a>
+          {!authSnapshot?.authenticated && <a className="plans-link" href="/login"><Sparkles size={14} /> Entrar ou criar conta</a>}
           {chats.length > 0 && (
             <>
               <button onClick={exportHistory}><FileDown size={14} /> Exportar histórico</button>
@@ -916,6 +919,7 @@ export default function Page() {
                     {authBusy ? <LoaderCircle className="spin" size={16} /> : "Começar a conversar"}
                   </button>
                 </form>
+                <a className="account-login-link" href="/login">Já tens conta? Entrar</a>
                 <span className="account-privacy">Sem palavra-passe. O teu nome fica guardado para esta conta.</span>
               </>
             ) : (
@@ -926,6 +930,11 @@ export default function Page() {
                   ? `Sessão iniciada como ${authSnapshot.email}.`
                   : "Cria a tua conta grátis com um link seguro enviado por e-mail. Sem palavra-passe."}</p>
                 {!authSnapshot?.authenticated && (
+                  <>
+                    <div className="account-provider-links">
+                      <a href="/api/auth/google">Continuar com Google</a>
+                      <a href="/api/auth/softedge">Entrar com SoftEdge</a>
+                    </div>
                   <form onSubmit={(event) => void requestMagicLink(event)}>
                     <label htmlFor="akira-account-name">Como queres que a AKIRA te chame?</label>
                     <input
@@ -953,6 +962,7 @@ export default function Page() {
                       {authBusy ? <LoaderCircle className="spin" size={16} /> : authLinkSent ? "Link enviado" : "Enviar link de acesso"}
                     </button>
                   </form>
+                  </>
                 )}
                 {authSnapshot?.authenticated && <button className="account-submit" onClick={() => setAuthMode(null)}>Voltar ao chat</button>}
                 {!authSnapshot?.authenticated && (

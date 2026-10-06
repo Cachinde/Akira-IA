@@ -11,7 +11,7 @@ export async function GET(request: NextRequest) {
     if (identity.created) setUserCookie(response, identity.userId);
     return response;
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Não foi possível carregar o plano.";
-    return NextResponse.json({ error: message }, { status: 503 });
+    console.error("Falha ao carregar o estado de faturação.", error);
+    return NextResponse.json({ error: "Não foi possível carregar os planos neste momento." }, { status: 503 });
   }
 }

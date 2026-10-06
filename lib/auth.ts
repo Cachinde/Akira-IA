@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import nodemailer from "nodemailer";
 import { billingPool, ensureBillingSchema } from "@/lib/billing";
 
@@ -188,6 +188,7 @@ export async function consumeMagicLink(token: string): Promise<{ userId: string;
       await client.query("COMMIT");
       return null;
     }
+
     await client.query(
       `UPDATE akira_billing_accounts
        SET email = $2, email_verified_at = NOW(), display_name = $3, updated_at = NOW()
@@ -196,6 +197,93 @@ export async function consumeMagicLink(token: string): Promise<{ userId: string;
     );
     await client.query("COMMIT");
     return { userId: link.user_id, displayName: link.display_name };
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+export async function signInWithProvider(input: {
+  provider: "google" | "softedge";
+  subject: string;
+  email: string;
+  displayName: string;
+  preferredUserId?: string;
+  tokenId?: string;
+  tokenExpiresAt?: number;
+}): Promise<{ userId: string; displayName: string }> {
+  const email = input.email.trim().toLowerCase();
+  const displayName = input.displayName.trim().replace(/\s+/g, " ").slice(0, 80);
+  if (!input.subject || input.subject.length > 255 ||
+    !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ||
+    displayName.length < 1 ||
+    (input.tokenId && (!input.tokenExpiresAt || input.tokenExpiresAt <= Date.now() / 1000))) {
+    throw new Error("The identity provider returned an invalid profile.");
+  }
+
+  await ensureBillingSchema();
+  const client = await billingPool().connect();
+  try {
+    await client.query("BEGIN");
+    if (input.tokenId) {
+      await client.query("DELETE FROM akira_auth_sso_tokens WHERE expires_at <= NOW()");
+      const assertion = await client.query(
+        `INSERT INTO akira_auth_sso_tokens (token_id, expires_at)
+         VALUES ($1, TO_TIMESTAMP($2))
+         ON CONFLICT DO NOTHING
+         RETURNING token_id`,
+        [input.tokenId, input.tokenExpiresAt],
+      );
+      if (!assertion.rowCount) throw new Error("The SoftEdge sign-in ticket has already been used.");
+    }
+
+    const linked = await client.query<{ user_id: string }>(
+      "SELECT user_id FROM akira_auth_identities WHERE provider = $1 AND subject = $2",
+      [input.provider, input.subject],
+    );
+    const byEmail = await client.query<{ user_id: string }>(
+      "SELECT user_id FROM akira_billing_accounts WHERE LOWER(email) = $1 LIMIT 1",
+      [email],
+    );
+    if (linked.rows[0] && byEmail.rows[0] && linked.rows[0].user_id !== byEmail.rows[0].user_id) {
+      throw new Error("This sign-in identity is already linked to a different account.");
+    }
+
+    const userId = linked.rows[0]?.user_id || byEmail.rows[0]?.user_id || input.preferredUserId || randomUUID();
+    await client.query(
+      `INSERT INTO akira_billing_accounts (user_id, email, display_name, email_verified_at)
+       VALUES ($1, $2, $3, NOW())
+       ON CONFLICT (user_id) DO UPDATE SET
+         email = EXCLUDED.email,
+         display_name = CASE
+           WHEN akira_billing_accounts.display_name IS NULL OR akira_billing_accounts.display_name = ''
+             THEN EXCLUDED.display_name
+           ELSE akira_billing_accounts.display_name
+         END,
+         email_verified_at = COALESCE(akira_billing_accounts.email_verified_at, NOW()),
+         updated_at = NOW()`,
+      [userId, email, displayName],
+    );
+    const inserted = await client.query(
+      `INSERT INTO akira_auth_identities (provider, subject, user_id)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (provider, subject) DO NOTHING
+       RETURNING user_id`,
+      [input.provider, input.subject, userId],
+    );
+    if (!inserted.rowCount) {
+      const existing = await client.query<{ user_id: string }>(
+        "SELECT user_id FROM akira_auth_identities WHERE provider = $1 AND subject = $2",
+        [input.provider, input.subject],
+      );
+      if (existing.rows[0]?.user_id !== userId) {
+        throw new Error("This sign-in identity is already linked to a different account.");
+      }
+    }
+    await client.query("COMMIT");
+    return { userId, displayName };
   } catch (error) {
     await client.query("ROLLBACK");
     throw error;

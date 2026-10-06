@@ -1,13 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getBillingCustomer, getOrCreateUser } from "@/lib/billing";
+import { getPublicSiteUrl } from "@/lib/site-url";
 
 export const runtime = "nodejs";
 
 export async function POST(request: NextRequest) {
   const secret = process.env.STRIPE_SECRET_KEY;
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL;
-  if (!secret || !siteUrl) {
-    return NextResponse.json({ error: "Stripe ainda não está configurado no servidor." }, { status: 503 });
+  const siteUrl = getPublicSiteUrl(request.url);
+  if (!secret || !/^sk_(test|live)_/.test(secret)) {
+    console.error("Stripe billing portal is unavailable because the server API key is missing or invalid.");
+    return NextResponse.json({ error: "A gestão de assinaturas está temporariamente indisponível." }, { status: 503 });
   }
   try {
     const { userId } = getOrCreateUser(request);
@@ -27,6 +29,7 @@ export async function POST(request: NextRequest) {
       },
       body: form,
       cache: "no-store",
+      signal: AbortSignal.timeout(15_000),
     });
     const result: unknown = await stripeResponse.json();
     if (!stripeResponse.ok || !result || typeof result !== "object") {
@@ -38,7 +41,7 @@ export async function POST(request: NextRequest) {
     }
     return NextResponse.json({ url });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Não foi possível abrir a faturação.";
-    return NextResponse.json({ error: message }, { status: 502 });
+    console.error("Stripe billing portal request failed.", error);
+    return NextResponse.json({ error: "Não foi possível abrir a gestão da assinatura agora." }, { status: 502 });
   }
 }

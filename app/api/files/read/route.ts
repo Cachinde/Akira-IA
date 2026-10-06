@@ -60,7 +60,7 @@ export async function POST(request: NextRequest) {
     if (identity.created) setUserCookie(response, identity.userId);
     return response;
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Não foi possível ler o ficheiro.";
-    return NextResponse.json({ error: message }, { status: 422 });
+    console.error("Falha ao ler um ficheiro enviado para a AKIRA.", error);
+    return NextResponse.json({ error: "Não foi possível processar este ficheiro. Confirma o formato e tenta novamente." }, { status: 422 });
   }
 }

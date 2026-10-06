@@ -65,7 +65,7 @@ export async function POST(req: NextRequest) {
     if (identity.created) setUserCookie(response, identity.userId);
     return response;
   } catch (error) {
-    const detail = error instanceof Error ? error.message : "Não foi possível ligar à AKIRA.";
-    return NextResponse.json({ error: detail }, { status: 502 });
+    console.error("Falha ao processar a mensagem da AKIRA.", error);
+    return NextResponse.json({ error: "A AKIRA não conseguiu responder agora. Tenta novamente dentro de alguns instantes." }, { status: 503 });
   }
 }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthSnapshot } from "@/lib/auth";
-import { getOrCreateUser, planSnapshot, setUserCookie, type PaidPlan } from "@/lib/billing";
+import { getBillingCustomer, getOrCreateUser, planSnapshot, saveBillingCustomer, setUserCookie, type PaidPlan } from "@/lib/billing";
+import { getPublicSiteUrl } from "@/lib/site-url";
 
 export const runtime = "nodejs";
 
@@ -11,9 +12,10 @@ const PRICE_ENV: Record<PaidPlan, string> = {
 
 export async function POST(request: NextRequest) {
   const secret = process.env.STRIPE_SECRET_KEY;
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL;
-  if (!secret || !siteUrl) {
-    return NextResponse.json({ error: "Stripe ainda não está configurado no servidor." }, { status: 503 });
+  const siteUrl = getPublicSiteUrl(request.url);
+  if (!secret || !/^sk_(test|live)_/.test(secret)) {
+    console.error("Stripe checkout is unavailable because the server API key is missing or invalid.");
+    return NextResponse.json({ error: "As assinaturas estão temporariamente indisponíveis. Tenta novamente mais tarde." }, { status: 503 });
   }
 
   let body: unknown;
@@ -29,7 +31,8 @@ export async function POST(request: NextRequest) {
 
   const priceId = process.env[PRICE_ENV[plan]];
   if (!priceId) {
-    return NextResponse.json({ error: `Configura o preço mensal ${plan} no Stripe e define ${PRICE_ENV[plan]} no Render.` }, { status: 503 });
+    console.error(`Stripe checkout is unavailable because ${PRICE_ENV[plan]} is missing.`);
+    return NextResponse.json({ error: "As assinaturas estão temporariamente indisponíveis. Tenta novamente mais tarde." }, { status: 503 });
   }
 
   try {
@@ -50,6 +53,7 @@ export async function POST(request: NextRequest) {
     const priceResponse = await fetch(`https://api.stripe.com/v1/prices/${encodeURIComponent(priceId)}`, {
       headers: { Authorization: `Bearer ${secret}` },
       cache: "no-store",
+      signal: AbortSignal.timeout(15_000),
     });
     const priceResult: unknown = await priceResponse.json();
     if (!priceResponse.ok || !priceResult || typeof priceResult !== "object") {
@@ -75,14 +79,19 @@ export async function POST(request: NextRequest) {
       "subscription_data[metadata][plan]": plan,
       "billing_address_collection": "auto",
     });
+    const existingCustomer = await getBillingCustomer(identity.userId);
+    if (existingCustomer) form.set("customer", existingCustomer);
+    else if (account.email) form.set("customer_email", account.email);
     const stripeResponse = await fetch("https://api.stripe.com/v1/checkout/sessions", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${secret}`,
+        "Idempotency-Key": `akira-checkout-${identity.userId}-${plan}-${Math.floor(Date.now() / 30_000)}`,
         "Content-Type": "application/x-www-form-urlencoded",
       },
       body: form,
       cache: "no-store",
+      signal: AbortSignal.timeout(15_000),
     });
     const result: unknown = await stripeResponse.json();
     if (!stripeResponse.ok || !result || typeof result !== "object") {
@@ -94,11 +103,14 @@ export async function POST(request: NextRequest) {
     if (typeof checkoutUrl !== "string" || !checkoutUrl.startsWith("https://checkout.stripe.com/")) {
       throw new Error("O Stripe devolveu um endereço de checkout inválido.");
     }
+    const customer = (result as Record<string, unknown>).customer;
+    const customerId = typeof customer === "string" ? customer : null;
+    if (!existingCustomer && customerId) await saveBillingCustomer(identity.userId, customerId);
     const response = NextResponse.json({ url: checkoutUrl });
     if (identity.created) setUserCookie(response, identity.userId);
     return response;
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Não foi possível iniciar o checkout.";
-    return NextResponse.json({ error: message }, { status: 502 });
+    console.error("Stripe checkout request failed.", error);
+    return NextResponse.json({ error: "Não foi possível iniciar a assinatura agora. Tenta novamente mais tarde." }, { status: 502 });
   }
 }
