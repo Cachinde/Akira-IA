@@ -95,6 +95,10 @@ export default function Page() {
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [slowRequest, setSlowRequest] = useState(false);
+  const [greetingRun, setGreetingRun] = useState(0);
+  const [typedGreeting, setTypedGreeting] = useState("");
+  const [typedQuestion, setTypedQuestion] = useState("");
+  const [greetingPhase, setGreetingPhase] = useState<"greeting" | "question" | null>(null);
   const [toolsOpen, setToolsOpen] = useState(false);
   const [imgMode, setImgMode] = useState(false);
   const [sideOpen, setSideOpen] = useState(false);
@@ -123,6 +127,7 @@ export default function Page() {
 
   const activeChat = chats.find((chat) => chat.id === activeId) || null;
   const messages = activeChat?.messages || [];
+  const displayName = authSnapshot?.displayName?.trim() || "";
   const query = search.trim().toLocaleLowerCase("pt");
   const visibleChats = chats.filter(
     (chat) =>
@@ -202,6 +207,65 @@ export default function Page() {
   }, []);
 
   useEffect(() => {
+    if (!authReady || messages.length > 0) return;
+
+    const intro = displayName ? `Olá, ${displayName}.` : "";
+    const question = "Como posso te ajudar?";
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      setTypedGreeting(intro);
+      setTypedQuestion(question);
+      setGreetingPhase(null);
+      return;
+    }
+
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    let phasePosition = 0;
+    let active = true;
+
+    setTypedGreeting("");
+    setTypedQuestion("");
+
+    const schedule = (callback: () => void, delay: number) => {
+      timers.push(setTimeout(callback, delay));
+    };
+    const type = (
+      text: string,
+      update: (value: string) => void,
+      onComplete: () => void,
+    ) => {
+      phasePosition = 0;
+      const nextCharacter = () => {
+        if (!active) return;
+        phasePosition += 1;
+        update(text.slice(0, phasePosition));
+        if (phasePosition < text.length) {
+          schedule(nextCharacter, 46);
+        } else {
+          onComplete();
+        }
+      };
+      schedule(nextCharacter, 46);
+    };
+    const typeQuestion = () => {
+      setGreetingPhase("question");
+      type(question, setTypedQuestion, () => setGreetingPhase(null));
+    };
+    const startQuestion = () => schedule(typeQuestion, intro ? 320 : 0);
+
+    if (intro) {
+      setGreetingPhase("greeting");
+      type(intro, setTypedGreeting, startQuestion);
+    } else {
+      startQuestion();
+    }
+
+    return () => {
+      active = false;
+      timers.forEach(clearTimeout);
+    };
+  }, [activeId, authReady, displayName, greetingRun, messages.length]);
+
+  useEffect(() => {
     if (!historyReady || !historyWritable) return;
     saveChats(chats).catch((error: unknown) => {
       setStorageError(error instanceof Error ? error.message : "Não foi possível guardar o histórico.");
@@ -249,6 +313,7 @@ export default function Page() {
 
   function newChat() {
     setActiveId(null);
+    setGreetingRun((current) => current + 1);
     setInput("");
     setAttachment(null);
     setImgMode(false);
@@ -730,7 +795,19 @@ export default function Page() {
             <div className="empty">
               <div className="hero-mark"><Logo size={92} /></div>
               <span className="hero-overline"><span /> INTELIGÊNCIA PARA AS TUAS IDEIAS</span>
-              <h1>{authSnapshot?.displayName ? <>Olá, <em>{authSnapshot.displayName}</em>.</> : <>Como posso <em>te ajudar?</em></>}</h1>
+              <h1
+                className={`greeting-title ${displayName ? "has-name" : ""}`}
+                aria-label={displayName ? `Olá, ${displayName}. Como posso te ajudar?` : "Como posso te ajudar?"}
+              >
+                <span className="greeting-line" aria-hidden="true">
+                  {displayName && <>{typedGreeting}{greetingPhase === "greeting" && <span className="typing-caret" />}</>}
+                </span>
+                <span className="greeting-line" aria-hidden="true">
+                  <span>{typedQuestion.slice(0, "Como posso ".length)}</span>
+                  <em>{typedQuestion.slice("Como posso ".length)}</em>
+                  {greetingPhase === "question" && <span className="typing-caret" />}
+                </span>
+              </h1>
               <p className="hero-caption">{authSnapshot?.displayName ? "O que vamos explorar hoje?" : "Pergunta, imagina, cria. Vamos descobrir juntos."}</p>
               <div className="suggestion-grid">
                 {suggestions.map(({ icon: Icon, label, text }) => (
@@ -907,7 +984,7 @@ export default function Page() {
               <>
                 <span className="account-eyebrow">UM ESPAÇO TEU</span>
                 <h2 id="account-title">Como queres que a AKIRA te chame?</h2>
-                <p>Escolhe um nome. Podes conversar sem conta durante as primeiras cinco mensagens.</p>
+                <p>Escolhe um nome. Podes conversar sem conta durante as primeiras dez mensagens.</p>
                 <form onSubmit={(event) => void saveName(event)}>
                   <label htmlFor="akira-display-name">O teu nome</label>
                   <input
@@ -932,7 +1009,7 @@ export default function Page() {
             ) : (
               <>
                 <span className="account-eyebrow">{authSnapshot?.authenticated ? "A TUA CONTA" : "CONTINUA COM A AKIRA"}</span>
-                <h2 id="account-title">{authSnapshot?.authenticated ? `Olá, ${authSnapshot.displayName}.` : "As cinco mensagens passaram num instante."}</h2>
+                <h2 id="account-title">{authSnapshot?.authenticated ? `Olá, ${authSnapshot.displayName}.` : "As dez mensagens passaram num instante."}</h2>
                 <p>{authSnapshot?.authenticated
                   ? `Sessão iniciada como ${authSnapshot.email}.`
                   : "Cria a tua conta grátis com um link seguro enviado por e-mail. Sem palavra-passe."}</p>

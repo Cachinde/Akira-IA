@@ -11,7 +11,7 @@ type Billing = {
 };
 
 const plans = [
-  { id: "free", name: "Gratuito", price: "0", period: "para sempre", messages: "5 mensagens grátis; 20/dia com conta", files: "3 ficheiros por dia", featured: false },
+  { id: "free", name: "Gratuito", price: "0", period: "para sempre", messages: "10 mensagens grátis; 20/dia com conta", files: "3 ficheiros por dia", featured: false },
   { id: "pro", name: "Pro", price: "5", period: "por mês", messages: "1.000 mensagens por mês", files: "100 ficheiros por mês", featured: true },
   { id: "ultra", name: "Ultra", price: "12", period: "por mês", messages: "5.000 mensagens por mês", files: "500 ficheiros por mês", featured: false },
 ] as const;

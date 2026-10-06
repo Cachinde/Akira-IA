@@ -1,8 +1,6 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import nodemailer from "nodemailer";
-import { billingPool, ensureBillingSchema } from "@/lib/billing";
-
-const GUEST_MESSAGE_LIMIT = 5;
+import { billingPool, ensureBillingSchema, GUEST_MESSAGE_LIMIT } from "@/lib/billing";
 
 function tokenHash(token: string): string {
   return createHash("sha256").update(token).digest("hex");

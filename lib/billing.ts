@@ -8,6 +8,8 @@ export const PLAN_LIMITS = {
   ultra: { messages: 5_000, files: 500, period: "month" },
 } as const;
 
+export const GUEST_MESSAGE_LIMIT = 10;
+
 export type PaidPlan = "pro" | "ultra";
 export type PlanId = keyof typeof PLAN_LIMITS;
 
@@ -197,7 +199,7 @@ export async function planSnapshot(userId: string) {
     for (const row of usage.rows) used[row.metric] = Number(row.usage_count);
     return {
       plan,
-      limits: { messages: isGuest ? 5 : limits.messages, files: limits.files, period: isGuest ? "lifetime" as const : limits.period },
+      limits: { messages: isGuest ? GUEST_MESSAGE_LIMIT : limits.messages, files: limits.files, period: isGuest ? "lifetime" as const : limits.period },
       used,
     };
   } finally {
@@ -237,11 +239,11 @@ export async function consumeUsage(userId: string, metric: "messages" | "files")
     const account = registered.rows[0];
     if (!account?.display_name && metric === "messages") {
       await client.query("COMMIT");
-      return { allowed: false as const, plan, limit: 5, requiresAccount: false, requiresProfile: true };
+      return { allowed: false as const, plan, limit: GUEST_MESSAGE_LIMIT, requiresAccount: false, requiresProfile: true };
     }
     const isGuest = !account?.email;
     const limits = PLAN_LIMITS[plan];
-    const limit = metric === "messages" && isGuest ? 5 : limits[metric];
+    const limit = metric === "messages" && isGuest ? GUEST_MESSAGE_LIMIT : limits[metric];
     const periodStart = isGuest && metric === "messages" ? "1970-01-01" : currentPeriod(limits.period);
     const updated = await client.query(
       `INSERT INTO akira_billing_usage (user_id, metric, period_start, usage_count)

@@ -55,7 +55,7 @@ export async function POST(req: NextRequest) {
       const response = NextResponse.json({
         ...(usage.requiresAccount ? { code: "account_required" } : {}),
         error: usage.requiresAccount
-          ? "As cinco mensagens grátis terminaram. Cria a tua conta gratuita para continuares."
+          ? "As dez mensagens grátis terminaram. Cria a tua conta gratuita para continuares."
           : `Atingiste o limite de ${usage.limit} mensagens do plano ${usage.plan}.`,
       }, { status: usage.requiresAccount ? 403 : 429 });
       if (identity.created) setUserCookie(response, identity.userId);
