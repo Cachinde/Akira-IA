@@ -33,7 +33,7 @@ docker build -t akira-ui .
 docker run --rm -p 3000:3000 -e HF_SPACE_ID=akra35567/Akiragpu akira-ui
 ```
 
-No Render, cria um **Web Service** com runtime Docker na pasta `bot_ui`, ou aplica o `render.yaml`. Configura `HF_TOKEN` nos Environment Variables apenas se precisares de autenticação/quota adicional nos Spaces. `NEXT_PUBLIC_SITE_URL` define o domínio absoluto usado nas pré-visualizações de links; o padrão é `https://akira-ia.onrender.com`. O serviço usa o `PORT` que o Render fornece e tem health check em `/api/health`.
+No Render, cria um **Web Service** com runtime Docker na pasta `bot_ui`, ou aplica o `render.yaml`. Configura `HF_TOKEN` nos Environment Variables apenas se precisares de autenticação/quota adicional nos Spaces. `NEXT_PUBLIC_SITE_URL` define o domínio absoluto usado nas pré-visualizações e links partilhados; o padrão é `https://akira-ia.onrender.com`. O serviço usa o `PORT` que o Render fornece e tem health check em `/api/health`. A geração de links rejeita hosts de bind ou endereços privados como `0.0.0.0:10000` e recorre ao domínio público do Render/configurado.
 
 ## Assinaturas, limites e ficheiros
 

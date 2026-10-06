@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createSharedMessage } from "@/lib/billing";
+import { getPublicSiteUrl } from "@/lib/site-url";
 
 export const runtime = "nodejs";
 
@@ -17,8 +18,7 @@ export async function POST(request: NextRequest) {
   if (content.length > 20_000) return NextResponse.json({ error: "A resposta é demasiado longa para partilhar." }, { status: 413 });
   try {
     const id = await createSharedMessage(content);
-    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || new URL(request.url).origin;
-    return NextResponse.json({ url: new URL(`/share/${id}`, siteUrl).toString() });
+    return NextResponse.json({ url: new URL(`/share/${id}`, getPublicSiteUrl(request.url)).toString() });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Não foi possível criar a partilha.";
     return NextResponse.json({ error: message }, { status: 503 });

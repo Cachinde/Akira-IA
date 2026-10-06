@@ -4,6 +4,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import Logo from "@/components/Logo";
 import { loadSharedMessage } from "@/lib/billing";
+import { getPublicSiteUrl } from "@/lib/site-url";
 
 type Props = { params: Promise<{ id: string }> };
 
@@ -15,7 +16,7 @@ async function sharedContent(params: Props["params"]): Promise<string | null> {
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const content = await sharedContent(params);
   if (!content) return { title: "Partilha indisponível — AKIRA" };
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://akira-ia.onrender.com";
+  const siteUrl = getPublicSiteUrl();
   const description = content.replace(/\s+/g, " ").slice(0, 180);
   const image = new URL("/akira-share-v2.png", siteUrl).toString();
   return {

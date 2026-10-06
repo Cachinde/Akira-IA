@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { getPublicSiteUrl } from "@/lib/site-url";
 
-const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://akira-ia.onrender.com";
+const siteUrl = getPublicSiteUrl();
 const shareImageUrl = new URL("/akira-share-v2.png", siteUrl).toString();
 const sharePageUrl = new URL("/?share=akira-v2", siteUrl).toString();
 
