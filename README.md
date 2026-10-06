@@ -35,6 +35,38 @@ docker run --rm -p 3000:3000 -e HF_SPACE_ID=akra35567/Akiragpu akira-ui
 
 No Render, cria um **Web Service** com runtime Docker na pasta `bot_ui`, ou aplica o `render.yaml`. Configura `HF_TOKEN` nos Environment Variables apenas se precisares de autenticação/quota adicional nos Spaces. As credenciais usadas em runtime configuram-se em **Render Dashboard → serviço → Environment** (e, no caso do SSO, também no serviço Railway da SoftEdge); **não** em GitHub → Settings → Secrets and variables → Actions, que só fornece segredos a workflows. `NEXT_PUBLIC_SITE_URL` define o domínio absoluto usado nas pré-visualizações e links partilhados; o padrão é `https://akira-ia.onrender.com`. O serviço usa o `PORT` que o Render fornece e só fica healthy quando `/api/health/ready` confirma o PostgreSQL e o segredo de sessão. A rota `/api/health` continua disponível como liveness. A geração de links rejeita hosts de bind ou endereços privados como `0.0.0.0:10000` e recorre ao domínio público do Render/configurado.
 
+## Variáveis de ambiente
+
+Define as variáveis no **Render Dashboard → AKIRA Web Service → Environment**. `render.yaml` já preenche os IDs públicos dos Spaces, os domínios e o nome do remetente. Preenche as restantes conforme as funcionalidades que queres ativar:
+
+| Variável | Valor/instrução | Necessária para |
+| --- | --- | --- |
+| `AKIRA_CHAT_SPACE_ID` | `akra35567/AKIRA-SOFTEDGE` (predefinido) | Respostas do chat |
+| `HF_SPACE_ID` | `akra35567/Akiragpu` (predefinido) | Geração e análise de imagens |
+| `HF_TOKEN` | Token pessoal Hugging Face; deixa vazio se os Spaces públicos funcionarem sem autenticação | Opcional; acesso/quota dos Spaces |
+| `NEXT_PUBLIC_SITE_URL` | `https://akira-ia.onrender.com` | URLs públicos, pré-visualizações e partilhas |
+| `DATABASE_URL` | URL **PostgreSQL** da base criada no Render; prefere a ligação interna | Contas, limites, sessão, links e assinaturas |
+| `BILLING_COOKIE_SECRET` | Segredo aleatório, mínimo 32 caracteres; mantém privado | Sessões, OAuth e assinatura do cookie |
+| `SMTP_HOST` | Servidor SMTP, por exemplo `smtp.gmail.com` | Envio de links de acesso por e-mail |
+| `SMTP_PORT` | Porta SMTP, por exemplo `587` | Envio de links de acesso por e-mail |
+| `SMTP_USERNAME` | Utilizador SMTP | Envio de links de acesso por e-mail |
+| `SMTP_PASSWORD` | Palavra-passe/app password SMTP | Envio de links de acesso por e-mail |
+| `SMTP_ENCRYPTION` | `tls` para STARTTLS na porta 587 ou `ssl` para TLS implícito | Envio de links de acesso por e-mail |
+| `SMTP_FROM_EMAIL` | Endereço autorizado pelo fornecedor SMTP | Remetente dos links |
+| `SMTP_FROM_NAME` | Opcional; `AKIRA — SoftEdge Corporation` se omitido | Nome apresentado no remetente |
+| `GOOGLE_CLIENT_ID` | OAuth Client ID Web do Google | Entrada AKIRA com Google |
+| `GOOGLE_CLIENT_SECRET` | Segredo do mesmo OAuth Client | Entrada AKIRA com Google |
+| `AKIRA_SSO_SECRET` | Segredo aleatório com pelo menos 32 bytes; **o mesmo valor** no Render e no Railway | Entrada com conta SoftEdge |
+| `SOFTEDGE_SSO_URL` | `https://softedge-corporation.up.railway.app` | Destino do SSO SoftEdge |
+| `STRIPE_SECRET_KEY` | Chave secreta Stripe `sk_test_...` ou `sk_live_...` | Checkout e Customer Portal |
+| `STRIPE_WEBHOOK_SECRET` | Segredo `whsec_...` do endpoint AKIRA no mesmo modo Stripe | Atualização de assinaturas |
+| `STRIPE_PRICE_PRO` | Price ID recorrente USD 5/mês | Plano Pro |
+| `STRIPE_PRICE_ULTRA` | Price ID recorrente USD 12/mês | Plano Ultra |
+
+Para ativar o início de sessão Google na **SoftEdge**, configura também as variáveis no **Railway → serviço Next.js da SoftEdge → Variables**: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `NEXT_PUBLIC_SITE_URL=https://softedge-corporation.up.railway.app`, `AKIRA_PUBLIC_URL=https://akira-ia.onrender.com` e `AKIRA_SSO_SECRET` com o mesmo valor definido no Render. Regista no Google Cloud Console os callbacks de ambos os serviços: `https://akira-ia.onrender.com/api/auth/google/callback` e `https://softedge-corporation.up.railway.app/api/auth/google/callback`.
+
+`PORT`, `NODE_ENV` e `RENDER_EXTERNAL_URL` são fornecidos/geridos pela plataforma; não precisas de os criar manualmente. Não uses `DATABASE_URL` MySQL da SoftEdge na AKIRA: a base exigida pela AKIRA é PostgreSQL. As variáveis de **GitHub Actions Secrets** não são enviadas automaticamente para Render ou Railway. Nunca coloques chaves privadas em variáveis `NEXT_PUBLIC_*`, no código ou no repositório.
+
 ## Assinaturas, limites e ficheiros
 
 A primeira visita pede apenas um nome de tratamento; esse nome personaliza a saudação e fica associado ao perfil. Sem conta, a pessoa pode enviar cinco mensagens no total. Depois, é necessário confirmar um e-mail através de um link de acesso sem senha, com validade de 15 minutos. A conta confirmada tem o limite Gratuito de 20 mensagens e 3 ficheiros por dia. O envio de links é limitado por e-mail (1 por minuto e 5 por hora). O histórico de conversas continua apenas no armazenamento local desse navegador; a conta não sincroniza o histórico entre dispositivos.
