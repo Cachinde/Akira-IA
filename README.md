@@ -35,6 +35,22 @@ docker run --rm -p 3000:3000 -e HF_SPACE_ID=akra35567/Akiragpu akira-ui
 
 No Render, cria um **Web Service** com runtime Docker na pasta `bot_ui`, ou aplica o `render.yaml`. Configura `HF_TOKEN` nos Environment Variables apenas se precisares de autenticação/quota adicional nos Spaces. `NEXT_PUBLIC_SITE_URL` define o domínio absoluto usado nas pré-visualizações de links; o padrão é `https://akira-ia.onrender.com`. O serviço usa o `PORT` que o Render fornece e tem health check em `/api/health`.
 
+## Assinaturas, limites e ficheiros
+
+A página `/plans` apresenta três planos pagos em USD: Gratuito (20 mensagens e 3 ficheiros/dia), Pro ($5/mês; 1.000 mensagens e 100 ficheiros/mês) e Ultra ($12/mês; 5.000 mensagens e 500 ficheiros/mês). As quotas são aplicadas no servidor com contadores atómicos PostgreSQL. O plano Gratuito também precisa do PostgreSQL para manter a quota diária.
+
+Para ativar faturação:
+
+1. Cria uma instância PostgreSQL no Render e define `DATABASE_URL` no Web Service com a connection string **interna** dessa base de dados. O schema AKIRA é criado automaticamente.
+2. No Stripe, cria dois preços recorrentes ativos: **USD 5 por mês** e **USD 12 por mês**. Coloca os Price IDs em `STRIPE_PRICE_PRO` e `STRIPE_PRICE_ULTRA`; o servidor valida moeda, valor e periodicidade antes de iniciar o checkout.
+3. Define `STRIPE_SECRET_KEY` e `BILLING_COOKIE_SECRET` nos Environment Variables do Render. Gera um segredo aleatório com pelo menos 32 caracteres; não o coloques no código ou no browser.
+4. Regista no Stripe o webhook `https://akira-ia.onrender.com/api/billing/webhook` e subscreve `checkout.session.completed`, `customer.subscription.created`, `customer.subscription.updated` e `customer.subscription.deleted`. Define o signing secret fornecido pelo Stripe em `STRIPE_WEBHOOK_SECRET`.
+5. Ativa o Customer Portal no Stripe para permitir que os clientes gerem/cancelem as assinaturas.
+
+Checkout, portal e webhook usam HTTPS e a assinatura oficial Stripe; eventos são idempotentes. As quotas e partilhas de respostas (90 dias) necessitam de PostgreSQL. A identidade de faturação atual é um cookie seguro e assinado do navegador, sem início de sessão: as quotas e a assinatura ficam associadas a esse navegador; apagar os cookies ou mudar de dispositivo não recupera a conta. Para identificação persistente entre dispositivos será necessário acrescentar autenticação.
+
+Anexos de imagem continuam a usar o Space AKIRAGPU. Também é possível enviar TXT, Markdown, CSV, JSON, PDF (até 30 páginas) e DOCX; os documentos são extraídos no servidor e enviados como contexto para o Space de conversa, com limite de 8 MB por ficheiro e 50.000 caracteres extraídos. A geração/análise de imagens também consome a quota de mensagens/ficheiros correspondente. Os ficheiros e conversas não são persistidos no servidor. Os links de partilha são públicos para quem os tiver e expiram após 90 dias.
+
 O workflow GitHub Actions `Render health ping` chama o endpoint `/api/health` de cinco em cinco minutos, mesmo sem ninguém com o browser aberto. Depois do deploy, define a variável **Actions → Variables** do repositório `RENDER_HEALTH_URL` com o URL HTTPS completo do teu serviço Render terminado em `/api/health` (por exemplo, `https://akira-ia.onrender.com/api/health`). Também podes executar o workflow manualmente em **Actions**. Isto pode reduzir o tempo de suspensão, mas cron do GitHub não é um SLA: a execução pode atrasar ou ser desativada por inatividade do repositório, e manter um serviço Free acordado pode não estar de acordo com os termos/plano atuais do Render. Confirma as regras do teu plano; para disponibilidade garantida, usa um plano pago.
 
 As etiquetas Open Graph e Twitter usam `public/akira-share-v2.png`, uma imagem de partilha 1200 × 630 com contraste reforçado e URL versionado para evitar o cache anterior do logo. A URL de partilha também inclui a versão da pré-visualização. Depois do deploy, partilha `https://akira-ia.onrender.com/?share=akira-v2`; algumas plataformas ainda podem exigir uma atualização no seu depurador de partilhas.

@@ -3,6 +3,7 @@
 import {
   ArrowUp,
   Check,
+  Copy,
   ChevronDown,
   Clock3,
   FileDown,
@@ -16,6 +17,7 @@ import {
   Paperclip,
   Search,
   Send,
+  Share2,
   Sparkles,
   SquarePen,
   Trash2,
@@ -24,9 +26,12 @@ import {
 import { ChangeEvent, FormEvent, KeyboardEvent, useEffect, useRef, useState } from "react";
 import Logo from "../components/Logo";
 import { Chat, Msg, loadChats, saveChats } from "../lib/history";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 const STYLES = ["foto realista", "anime", "ilustração", "3d", "cinematográfico", "aquarela"];
-const IMAGE_LIMIT = 8 * 1024 * 1024;
+const FILE_LIMIT = 8 * 1024 * 1024;
+const DOCUMENT_EXTENSIONS = new Set(["txt", "md", "markdown", "csv", "json", "pdf", "docx"]);
 
 function uid() {
   return crypto.randomUUID();
@@ -79,7 +84,8 @@ export default function Page() {
   const [status, setStatus] = useState("");
   const [statusKind, setStatusKind] = useState<"error" | "success" | "">("");
   const [imageStyle, setImageStyle] = useState(STYLES[0]);
-  const [attachment, setAttachment] = useState<{ name: string; dataUrl: string } | null>(null);
+  const [attachment, setAttachment] = useState<{ name: string; dataUrl?: string; text?: string } | null>(null);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
   const [chatMenu, setChatMenu] = useState<string | null>(null);
   const [historyReady, setHistoryReady] = useState(false);
   const [historyWritable, setHistoryWritable] = useState(false);
@@ -211,21 +217,51 @@ export default function Page() {
     URL.revokeObjectURL(url);
   }
 
-  function onFile(event: ChangeEvent<HTMLInputElement>) {
+  async function onFile(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     event.target.value = "";
     if (!file) return;
-    if (!file.type.startsWith("image/")) {
-      setStatus("Escolhe um ficheiro de imagem.");
-      setStatusKind("error");
-      return;
-    }
-    if (file.size > IMAGE_LIMIT) {
-      setStatus("A imagem tem de ter menos de 8 MB.");
+    if (file.size > FILE_LIMIT) {
+      setStatus("O ficheiro tem de ter menos de 8 MB.");
       setStatusKind("error");
       return;
     }
 
+    if (!file.type.startsWith("image/")) {
+      const extension = file.name.split(".").pop()?.toLocaleLowerCase("en");
+      if (!extension || !DOCUMENT_EXTENSIONS.has(extension)) {
+        setStatus("Formatos suportados: imagens, TXT, Markdown, CSV, JSON, PDF e DOCX.");
+        setStatusKind("error");
+        return;
+      }
+      setBusy(true);
+      setStatus("");
+      try {
+        const form = new FormData();
+        form.append("file", file);
+        const response = await fetch("/api/files/read", { method: "POST", body: form });
+        const result = await readJson(response);
+        if (!result || typeof result !== "object" || !("text" in result) || typeof result.text !== "string" ||
+          !("name" in result) || typeof result.name !== "string") {
+          throw new Error("Não foi possível extrair texto válido do ficheiro.");
+        }
+        setAttachment({ name: result.name, text: result.text });
+        setStatus("Ficheiro lido. Envia uma pergunta para a AKIRA o analisar.");
+        setStatusKind("success");
+        inputRef.current?.focus();
+      } catch (error) {
+        setStatus(error instanceof Error ? error.message : "Não foi possível ler o ficheiro.");
+        setStatusKind("error");
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
+    if (file.size === 0) {
+      setStatus("A imagem está vazia.");
+      setStatusKind("error");
+      return;
+    }
     const reader = new FileReader();
     reader.onload = () => {
       if (typeof reader.result !== "string" || !reader.result.startsWith("data:image/")) {
@@ -269,9 +305,11 @@ export default function Page() {
     }));
     const visibleContent = imgMode
       ? `Cria uma imagem: ${content}`
-      : content || "Descreve esta imagem.";
+      : content || (attachment?.text ? `Analisa o ficheiro ${attachment.name}.` : "Descreve esta imagem.");
     const userMessage = makeMessage("user", visibleContent, {
       attachment: attachment?.dataUrl,
+      attachmentName: attachment?.name,
+      context: attachment?.text,
     });
 
     pushMessage(chatId, userMessage);
@@ -296,34 +334,38 @@ export default function Page() {
         pushMessage(chatId, makeMessage("assistant", "A imagem está pronta.", { image: result.image }));
         setImgMode(false);
       } else {
-        let chatMessage = content || "Descreve esta imagem em detalhe.";
+        let chatMessage = content || (attachment?.text ? `Analisa o ficheiro ${attachment.name}.` : "Descreve esta imagem em detalhe.");
         if (attachment) {
-          const imageResponse = await fetch("/api/image", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              imageB64: attachment.dataUrl,
-              prompt: content || "Descreve esta imagem em detalhe.",
-            }),
-          });
-          const imageResult = await readJson(imageResponse);
-          if (!imageResult || typeof imageResult !== "object" || !("description" in imageResult) || typeof imageResult.description !== "string") {
-            throw new Error("A AKIRA não devolveu uma análise de imagem válida.");
+          if (attachment.text) {
+            chatMessage += `\n\n[Conteúdo extraído do ficheiro ${attachment.name}]\n${attachment.text}`;
+          } else if (attachment.dataUrl) {
+            const imageResponse = await fetch("/api/image", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                imageB64: attachment.dataUrl,
+                prompt: content || "Descreve esta imagem em detalhe.",
+              }),
+            });
+            const imageResult = await readJson(imageResponse);
+            if (!imageResult || typeof imageResult !== "object" || !("description" in imageResult) || typeof imageResult.description !== "string") {
+              throw new Error("A AKIRA não devolveu uma análise de imagem válida.");
+            }
+            const imageContext = `[imagem anexada: ${imageResult.description}]`;
+            chatMessage += `\n\n${imageContext}`;
+            setChats((current) =>
+              current.map((chat) =>
+                chat.id === chatId
+                  ? {
+                      ...chat,
+                      messages: chat.messages.map((message) =>
+                        message.id === userMessage.id ? { ...message, context: imageContext } : message,
+                      ),
+                    }
+                  : chat,
+              ),
+            );
           }
-          const imageContext = `[imagem anexada: ${imageResult.description}]`;
-          chatMessage += `\n\n${imageContext}`;
-          setChats((current) =>
-            current.map((chat) =>
-              chat.id === chatId
-                ? {
-                    ...chat,
-                    messages: chat.messages.map((message) =>
-                      message.id === userMessage.id ? { ...message, context: imageContext } : message,
-                    ),
-                  }
-                : chat,
-            ),
-          );
         }
 
         const response = await fetch("/api/chat", {
@@ -368,6 +410,37 @@ export default function Page() {
     }
     setInput(text);
     inputRef.current?.focus();
+  }
+
+  async function copyMessage(message: Msg) {
+    try {
+      await navigator.clipboard.writeText(message.content);
+      setCopiedId(message.id);
+      window.setTimeout(() => setCopiedId((current) => current === message.id ? null : current), 1800);
+    } catch (error) {
+      setStatus(error instanceof Error ? `Não foi possível copiar a resposta: ${error.message}` : "Não foi possível copiar a resposta.");
+      setStatusKind("error");
+    }
+  }
+
+  async function shareMessage(message: Msg) {
+    try {
+      const response = await fetch("/api/share", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: message.content }),
+      });
+      const result = await readJson(response);
+      if (!result || typeof result !== "object" || !("url" in result) || typeof result.url !== "string") {
+        throw new Error("Não foi possível criar o link da resposta.");
+      }
+      await navigator.clipboard.writeText(result.url);
+      setStatus("Link da resposta copiado. Está disponível durante 90 dias.");
+      setStatusKind("success");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Não foi possível partilhar a resposta.");
+      setStatusKind("error");
+    }
   }
 
   return (
@@ -442,6 +515,7 @@ export default function Page() {
         </div>
 
         <div className="side-foot">
+          <a className="plans-link" href="/plans"><Sparkles size={14} /> Planos de assinatura</a>
           {chats.length > 0 && (
             <>
               <button onClick={exportHistory}><FileDown size={14} /> Exportar histórico</button>
@@ -503,8 +577,24 @@ export default function Page() {
                   {message.role === "assistant" && <div className="assistant-mark"><Logo size={24} /></div>}
                   <div className="message-content">
                     {message.attachment && <img className="attached-image" src={message.attachment} alt="Imagem anexada" />}
-                    <div className="bubble">{message.content}</div>
+                    <div className={`bubble ${message.role === "assistant" ? "markdown-content" : ""}`}>
+                      {message.role === "assistant"
+                        ? <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
+                        : message.content}
+                    </div>
                     {message.image && <img className="gen" src={message.image} alt="Imagem gerada pela AKIRA" />}
+                    {message.attachmentName && <span className="message-attachment"><Paperclip size={12} /> {message.attachmentName}</span>}
+                    {message.role === "assistant" && (
+                      <div className="message-actions">
+                        <button className="icon-button" onClick={() => void copyMessage(message)} aria-label="Copiar resposta" title="Copiar resposta">
+                          {copiedId === message.id ? <Check size={14} /> : <Copy size={14} />}
+                          <span>{copiedId === message.id ? "Copiado" : "Copiar"}</span>
+                        </button>
+                        <button className="icon-button" onClick={() => void shareMessage(message)} aria-label="Partilhar resposta" title="Copiar link para partilhar">
+                          <Share2 size={14} /><span>Partilhar</span>
+                        </button>
+                      </div>
+                    )}
                     <time className="message-time">{formatTime(message.createdAt)}</time>
                   </div>
                 </article>
@@ -532,7 +622,7 @@ export default function Page() {
           )}
           {attachment && (
             <div className="attachment-card">
-              <img src={attachment.dataUrl} alt="Pré-visualização da imagem" />
+              {attachment.dataUrl ? <img src={attachment.dataUrl} alt="Pré-visualização da imagem" /> : <span className="attachment-file-icon"><Paperclip size={16} /></span>}
               <span>{attachment.name}</span>
               <button className="icon-button" onClick={() => setAttachment(null)} aria-label="Remover imagem">
                 <X size={15} />
@@ -591,13 +681,13 @@ export default function Page() {
                 <button
                   type="button"
                   className="icon-btn attach-btn"
-                  aria-label="Anexar imagem"
+                  aria-label="Anexar imagem ou documento"
                   onClick={() => fileRef.current?.click()}
                   disabled={!historyReady || busy || imgMode}
                 >
                   <Paperclip size={17} />
                 </button>
-                <input ref={fileRef} type="file" accept="image/*" hidden onChange={onFile} disabled={busy || imgMode} />
+                <input ref={fileRef} type="file" accept="image/*,.txt,.md,.markdown,.csv,.json,.pdf,.docx" hidden onChange={onFile} disabled={busy || imgMode} />
                 <button
                   type="button"
                   className={`tools-button ${toolsOpen ? "selected" : ""}`}

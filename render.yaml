@@ -13,3 +13,15 @@ services:
         value: https://akira-ia.onrender.com
       - key: HF_TOKEN
         sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: BILLING_COOKIE_SECRET
+        sync: false
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: STRIPE_PRICE_PRO
+        sync: false
+      - key: STRIPE_PRICE_ULTRA
+        sync: false

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { apiImage, apiDescribe } from "@/lib/space";
+import { consumeUsage, getOrCreateUser, setUserCookie } from "@/lib/billing";
 
 export const runtime = "nodejs";
 
@@ -22,12 +23,19 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "Anexa uma imagem válida com menos de 8 MB." }, { status: 413 });
       }
 
-      return NextResponse.json({
+      const identity = getOrCreateUser(req);
+      const usage = await consumeUsage(identity.userId, "files");
+      if (!usage.allowed) {
+        return NextResponse.json({ error: `Atingiste o limite de ${usage.limit} ficheiros do plano ${usage.plan}.` }, { status: 429 });
+      }
+      const response = NextResponse.json({
         description: await apiDescribe(
           input.imageB64,
           typeof input.prompt === "string" ? input.prompt : undefined,
         ),
       });
+      if (identity.created) setUserCookie(response, identity.userId);
+      return response;
     }
 
     const prompt = typeof input.prompt === "string" ? input.prompt.trim() : "";
@@ -36,7 +44,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "A descrição excede o limite de 1.000 caracteres." }, { status: 413 });
     }
 
-    return NextResponse.json(await apiImage(prompt));
+    const identity = getOrCreateUser(req);
+    const usage = await consumeUsage(identity.userId, "messages");
+    if (!usage.allowed) {
+      return NextResponse.json({ error: `Atingiste o limite de ${usage.limit} mensagens do plano ${usage.plan}.` }, { status: 429 });
+    }
+    const response = NextResponse.json(await apiImage(prompt));
+    if (identity.created) setUserCookie(response, identity.userId);
+    return response;
   } catch (error) {
     const detail = error instanceof Error ? error.message : "O pedido de imagem à AKIRA falhou.";
     return NextResponse.json({ error: detail }, { status: 502 });

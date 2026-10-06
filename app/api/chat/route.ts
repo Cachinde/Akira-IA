@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { apiChat } from "@/lib/space";
+import { consumeUsage, getOrCreateUser, setUserCookie } from "@/lib/billing";
 
 export const runtime = "nodejs";
 
@@ -18,8 +19,8 @@ export async function POST(req: NextRequest) {
   const input = body as Record<string, unknown>;
   const message = typeof input.message === "string" ? input.message.trim() : "";
   if (!message) return NextResponse.json({ error: "Escreve uma mensagem." }, { status: 400 });
-  if (message.length > 8_000) {
-    return NextResponse.json({ error: "A mensagem excede o limite de 8.000 caracteres." }, { status: 413 });
+  if (message.length > 60_000) {
+    return NextResponse.json({ error: "A mensagem e os anexos excedem o limite de 60.000 caracteres." }, { status: 413 });
   }
 
   const history = Array.isArray(input.history)
@@ -37,7 +38,17 @@ export async function POST(req: NextRequest) {
     : [];
 
   try {
-    return NextResponse.json(await apiChat(message, history));
+    const identity = getOrCreateUser(req);
+    const usage = await consumeUsage(identity.userId, "messages");
+    if (!usage.allowed) {
+      return NextResponse.json(
+        { error: `Atingiste o limite de ${usage.limit} mensagens do plano ${usage.plan}.` },
+        { status: 429 },
+      );
+    }
+    const response = NextResponse.json(await apiChat(message, history));
+    if (identity.created) setUserCookie(response, identity.userId);
+    return response;
   } catch (error) {
     const detail = error instanceof Error ? error.message : "Não foi possível ligar à AKIRA.";
     return NextResponse.json({ error: detail }, { status: 502 });

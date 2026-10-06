@@ -5,6 +5,7 @@ export type Msg = {
   context?: string;
   image?: string;
   attachment?: string;
+  attachmentName?: string;
   createdAt: string;
 };
 
@@ -74,6 +75,7 @@ function normalizeChat(chat: Chat, index: number): Chat {
       ...(typeof candidate.context === "string" ? { context: candidate.context } : {}),
       ...(typeof candidate.image === "string" ? { image: candidate.image } : {}),
       ...(typeof candidate.attachment === "string" ? { attachment: candidate.attachment } : {}),
+      ...(typeof candidate.attachmentName === "string" ? { attachmentName: candidate.attachmentName } : {}),
     };
   });
   const lastMessage = messages[messages.length - 1];
