@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { apiChat } from "@/lib/space";
 import { consumeUsage, getOrCreateUser, setUserCookie } from "@/lib/billing";
+import {
+  CHAT_MESSAGE_CHARACTER_LIMIT,
+  CHAT_REQUEST_CHARACTER_LIMIT,
+} from "@/lib/chat-limits";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -18,9 +22,18 @@ export async function POST(req: NextRequest) {
   }
 
   const input = body as Record<string, unknown>;
-  const message = typeof input.message === "string" ? input.message.trim() : "";
+  const rawMessage = typeof input.message === "string" ? input.message : "";
+  if (rawMessage.length > CHAT_MESSAGE_CHARACTER_LIMIT) {
+    return NextResponse.json(
+      { error: `A mensagem excede o limite de ${CHAT_MESSAGE_CHARACTER_LIMIT.toLocaleString("pt-PT")} caracteres. Encurta-a para a poderes enviar.` },
+      { status: 413 },
+    );
+  }
+  const message = rawMessage.trim();
   if (!message) return NextResponse.json({ error: "Escreve uma mensagem." }, { status: 400 });
-  if (message.length > 60_000) {
+  const context = typeof input.context === "string" ? input.context : "";
+  const requestMessage = context ? `${message}\n\n${context}` : message;
+  if (requestMessage.length > CHAT_REQUEST_CHARACTER_LIMIT) {
     return NextResponse.json({ error: "A mensagem e os anexos excedem o limite de 60.000 caracteres." }, { status: 413 });
   }
 
@@ -62,7 +75,7 @@ export async function POST(req: NextRequest) {
       if (identity.created) setUserCookie(response, identity.userId);
       return response;
     }
-    const response = NextResponse.json(await apiChat(message, history));
+    const response = NextResponse.json(await apiChat(requestMessage, history));
     if (identity.created) setUserCookie(response, identity.userId);
     return response;
   } catch (error) {

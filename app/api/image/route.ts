@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { apiImage, apiDescribe } from "@/lib/space";
 import { consumeUsage, getOrCreateUser, setUserCookie } from "@/lib/billing";
+import { CHAT_MESSAGE_CHARACTER_LIMIT, IMAGE_GENERATION_CHARACTER_LIMIT } from "@/lib/chat-limits";
 
 export const runtime = "nodejs";
 
@@ -24,6 +25,12 @@ export async function POST(req: NextRequest) {
       if (!input.imageB64.startsWith("data:image/") || input.imageB64.length > 11_000_000) {
         return NextResponse.json({ error: "Anexa uma imagem válida com menos de 8 MB." }, { status: 413 });
       }
+      if (typeof input.prompt === "string" && input.prompt.length > CHAT_MESSAGE_CHARACTER_LIMIT) {
+        return NextResponse.json(
+          { error: `A mensagem excede o limite de ${CHAT_MESSAGE_CHARACTER_LIMIT.toLocaleString("pt-PT")} caracteres. Encurta-a para a poderes enviar.` },
+          { status: 413 },
+        );
+      }
 
       const identity = getOrCreateUser(req);
       const usage = await consumeUsage(identity.userId, "files");
@@ -42,7 +49,7 @@ export async function POST(req: NextRequest) {
 
     const prompt = typeof input.prompt === "string" ? input.prompt.trim() : "";
     if (!prompt) return NextResponse.json({ error: "Escreve uma descrição para a imagem." }, { status: 400 });
-    if (prompt.length > 1_000) {
+    if (prompt.length > IMAGE_GENERATION_CHARACTER_LIMIT) {
       return NextResponse.json({ error: "A descrição excede o limite de 1.000 caracteres." }, { status: 413 });
     }
 

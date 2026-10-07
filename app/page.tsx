@@ -27,6 +27,11 @@ import {
 import { ChangeEvent, FormEvent, KeyboardEvent, useEffect, useRef, useState } from "react";
 import Logo from "../components/Logo";
 import { Chat, Msg, loadChats, saveChats } from "../lib/history";
+import {
+  CHAT_MESSAGE_CHARACTER_LIMIT,
+  estimateTokens,
+  IMAGE_GENERATION_CHARACTER_LIMIT,
+} from "../lib/chat-limits";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -128,11 +133,14 @@ export default function Page() {
   const [historyWritable, setHistoryWritable] = useState(false);
   const [storageError, setStorageError] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const threadRef = useRef<HTMLElement>(null);
+  const shouldFollowMessages = useRef(true);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   const activeChat = chats.find((chat) => chat.id === activeId) || null;
   const messages = activeChat?.messages || [];
+  const messageCharacterLimit = imgMode ? IMAGE_GENERATION_CHARACTER_LIMIT : CHAT_MESSAGE_CHARACTER_LIMIT;
+  const messageExceedsLimit = input.length > messageCharacterLimit;
   const displayName = authSnapshot?.displayName?.trim() || "";
   const query = search.trim().toLocaleLowerCase("pt");
   const visibleChats = chats.filter(
@@ -279,8 +287,16 @@ export default function Page() {
   }, [chats, historyReady, historyWritable]);
 
   useEffect(() => {
+    shouldFollowMessages.current = true;
+    const thread = threadRef.current;
+    if (thread) thread.scrollTop = thread.scrollHeight;
+  }, [activeId]);
+
+  useEffect(() => {
     if (messages.length === 0 && !busy) return;
-    bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+    if (shouldFollowMessages.current && threadRef.current) {
+      threadRef.current.scrollTop = threadRef.current.scrollHeight;
+    }
   }, [activeId, messages.length, busy]);
 
   useEffect(() => {
@@ -364,6 +380,11 @@ export default function Page() {
   }
 
   async function onFile(event: ChangeEvent<HTMLInputElement>) {
+    if (input.length > CHAT_MESSAGE_CHARACTER_LIMIT) {
+      event.currentTarget.value = "";
+      inputRef.current?.focus();
+      return;
+    }
     const file = event.target.files?.[0];
     event.target.value = "";
     if (!file) return;
@@ -428,7 +449,14 @@ export default function Page() {
   }
 
   async function send(text?: string) {
-    const content = (text ?? input).trim();
+    const rawContent = text ?? input;
+    const content = rawContent.trim();
+    const characterLimit = imgMode ? IMAGE_GENERATION_CHARACTER_LIMIT : CHAT_MESSAGE_CHARACTER_LIMIT;
+    if (rawContent.length > characterLimit) {
+      if (text !== undefined) setInput(rawContent);
+      inputRef.current?.focus();
+      return;
+    }
     if ((!content && !attachment) || busy) return;
     if (!authReady) return;
     if (!authSnapshot?.displayName) {
@@ -509,9 +537,10 @@ export default function Page() {
         setImgMode(false);
       } else {
         let chatMessage = content || (attachment?.text ? `Analisa o ficheiro ${attachment.name}.` : "Descreve esta imagem em detalhe.");
+        let chatContext = "";
         if (attachment) {
           if (attachment.text) {
-            chatMessage += `\n\n[Conteúdo extraído do ficheiro ${attachment.name}]\n${attachment.text}`;
+            chatContext = `[Conteúdo extraído do ficheiro ${attachment.name}]\n${attachment.text}`;
           } else if (attachment.dataUrl) {
             const imageResponse = await fetch("/api/image", {
               method: "POST",
@@ -527,7 +556,7 @@ export default function Page() {
               throw new Error("A AKIRA não devolveu uma análise de imagem válida.");
             }
             const imageContext = `[imagem anexada: ${imageResult.description}]`;
-            chatMessage += `\n\n${imageContext}`;
+            chatContext = imageContext;
             setActivityMessages(["A AKIRA está a pensar", "A AKIRA está a organizar as ideias", "A AKIRA está a preparar a resposta"]);
             setActivityIndex(0);
             setChats((current) =>
@@ -548,7 +577,7 @@ export default function Page() {
         const response = await fetch("/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ message: chatMessage, history: previousHistory }),
+          body: JSON.stringify({ message: chatMessage, context: chatContext, history: previousHistory }),
           signal: AbortSignal.timeout(115_000),
         });
         const result = await readJson(response);
@@ -823,7 +852,15 @@ export default function Page() {
           </div>
         </header>
 
-        <section className="thread" aria-live="polite">
+        <section
+          className="thread"
+          aria-live="polite"
+          ref={threadRef}
+          onScroll={(event) => {
+            const thread = event.currentTarget;
+            shouldFollowMessages.current = thread.scrollHeight - thread.scrollTop - thread.clientHeight < 100;
+          }}
+        >
           {messages.length === 0 && (
             <div className="empty">
               <div className="hero-mark"><Logo size={92} /></div>
@@ -864,13 +901,19 @@ export default function Page() {
                 <article key={message.id} className={`msg ${message.role}`}>
                   {message.role === "assistant" && <div className="assistant-mark"><Logo size={24} /></div>}
                   <div className="message-content">
-                    {message.attachment && <img className="attached-image" src={message.attachment} alt="Imagem anexada" />}
+                    {message.attachment && <img className="attached-image" src={message.attachment} alt="Imagem anexada" onLoad={() => {
+                      const thread = threadRef.current;
+                      if (shouldFollowMessages.current && thread) thread.scrollTop = thread.scrollHeight;
+                    }} />}
                     <div className={`bubble ${message.role === "assistant" ? "markdown-content" : ""}`}>
                       {message.role === "assistant"
                         ? <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
                         : message.content}
                     </div>
-                    {message.image && <img className="gen" src={message.image} alt="Imagem gerada pela AKIRA" />}
+                    {message.image && <img className="gen" src={message.image} alt="Imagem gerada pela AKIRA" onLoad={() => {
+                      const thread = threadRef.current;
+                      if (shouldFollowMessages.current && thread) thread.scrollTop = thread.scrollHeight;
+                    }} />}
                     {message.attachmentName && <span className="message-attachment"><Paperclip size={12} /> {message.attachmentName}</span>}
                     <div className="message-actions">
                       <button
@@ -904,10 +947,8 @@ export default function Page() {
                   </div>
                 </div>
               )}
-              <div ref={bottomRef} />
             </div>
           )}
-          {!activeChat && messages.length === 0 && <div ref={bottomRef} />}
         </section>
 
         <div className="composer-zone">
@@ -967,14 +1008,25 @@ export default function Page() {
             <textarea
               ref={inputRef}
               rows={1}
-              maxLength={imgMode ? 1_000 : 8_000}
               placeholder={imgMode ? "Descreve a imagem que tens em mente…" : "Escreve a tua mensagem…"}
               value={input}
               disabled={!historyReady || busy}
               onChange={(event) => setInput(event.target.value)}
               onKeyDown={onKeyDown}
               aria-label="A tua mensagem"
+              aria-invalid={messageExceedsLimit}
             />
+            {messageExceedsLimit && (
+              <div className="composer-limit-error" role="alert">
+                A mensagem excede o limite de {messageCharacterLimit.toLocaleString("pt-PT")} caracteres. Encurta-a para a poderes enviar.
+              </div>
+            )}
+            <div className={`composer-count ${messageExceedsLimit ? "over-limit" : ""}`} aria-live="polite">
+              <span>{input.length.toLocaleString("pt-PT")} / {messageCharacterLimit.toLocaleString("pt-PT")} caracteres</span>
+              <span title="Estimativa aproximada: cerca de 1 token por 4 caracteres; não é uma tokenização exata.">
+                ~{estimateTokens(input).toLocaleString("pt-PT")} tokens (estimativa)
+              </span>
+            </div>
             <div className="composer-bar">
               <div className="composer-tools">
                 <button
