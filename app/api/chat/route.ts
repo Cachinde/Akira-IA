@@ -3,6 +3,7 @@ import { apiChat } from "@/lib/space";
 import { consumeUsage, getOrCreateUser, setUserCookie } from "@/lib/billing";
 
 export const runtime = "nodejs";
+export const maxDuration = 60;
 
 export async function POST(req: NextRequest) {
   let body: unknown;
