@@ -19,7 +19,7 @@ Abre `http://localhost:3000`. O ID do Space já vem configurado em `.env.example
 O chat e as imagens ligam-se ao Space Gradio `akra35567/AKIRA-SOFTEDGE`. A URL `https://akra35567-akira-softedge.hf.space/api` não é, na publicação atual, uma API REST JSON; o Space está publicado como Gradio:
 
 - `/_send` (AKIRA-SOFTEDGE) — resposta de conversa, com o histórico anterior da sessão.
-- `/generate_image` (AKIRA-SOFTEDGE) — geração de imagem com prompt e estilo.
+- `/generate_image` (AKIRA-SOFTEDGE) — geração de imagem com prompt, estilo e contexto recente da conversa.
 - `/describe_image` — análise de uma imagem codificada em base64.
 
 As rotas Next `/api/chat` e `/api/image` fazem as chamadas no servidor para não expor o token Hugging Face ao browser. Por padrão, ambas usam `akra35567/AKIRA-SOFTEDGE`; `AKIRA_CHAT_SPACE_ID` e `HF_SPACE_ID` podem ser configurados explicitamente. Erros do Space são devolvidos como erros HTTP explícitos, em vez de mensagens com aparência de sucesso.

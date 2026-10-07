@@ -4,6 +4,8 @@ import { consumeUsage, getOrCreateUser, setUserCookie } from "@/lib/billing";
 
 export const runtime = "nodejs";
 
+const IMAGE_STYLES = new Set(["foto realista", "anime", "ilustração", "3d", "cinematográfico", "aquarela"]);
+
 export async function POST(req: NextRequest) {
   let body: unknown;
   try {
@@ -44,6 +46,24 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "A descrição excede o limite de 1.000 caracteres." }, { status: 413 });
     }
 
+    const style = typeof input.style === "string" && IMAGE_STYLES.has(input.style)
+      ? input.style
+      : "foto realista";
+    const history = Array.isArray(input.history)
+      ? input.history
+          .filter(
+            (item): item is { role: "user" | "assistant"; content: string } =>
+              !!item &&
+              typeof item === "object" &&
+              ((item as Record<string, unknown>).role === "user" ||
+                (item as Record<string, unknown>).role === "assistant") &&
+              typeof (item as Record<string, unknown>).content === "string",
+          )
+          .map(({ role, content }) => ({ role, content: content.trim().slice(0, 400) }))
+          .filter(({ content }) => content.length > 0)
+          .slice(-8)
+      : [];
+
     const identity = getOrCreateUser(req);
     const usage = await consumeUsage(identity.userId, "messages");
     if (usage.requiresProfile) {
@@ -61,7 +81,7 @@ export async function POST(req: NextRequest) {
       if (identity.created) setUserCookie(response, identity.userId);
       return response;
     }
-    const response = NextResponse.json(await apiImage(prompt));
+    const response = NextResponse.json(await apiImage(prompt, style, history));
     if (identity.created) setUserCookie(response, identity.userId);
     return response;
   } catch (error) {

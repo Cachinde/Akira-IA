@@ -108,9 +108,13 @@ export async function apiChat(message: string, history: ChatMsg[]): Promise<Chat
   return { reply, provider: "AKIRA-SOFTEDGE" };
 }
 
-export async function apiImage(prompt: string, style = "foto realista"): Promise<ImageResult> {
+export async function apiImage(
+  prompt: string,
+  style = "foto realista",
+  history: ChatMsg[] = [],
+): Promise<ImageResult> {
   const client = await imageSpaceClient();
-  const result = await client.predict("/generate_image", [prompt, style]);
+  const result = await client.predict("/generate_image", [prompt, style, JSON.stringify(history)]);
   const output = objectOutput<ImagePayload>(result.data, "geração de imagem");
   const image = typeof output.image === "string" ? output.image : "";
 
