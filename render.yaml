@@ -16,7 +16,7 @@ services:
     healthCheckPath: /api/health/ready
     envVars:
       - key: HF_SPACE_ID
-        value: akra35567/Akiragpu
+        value: akra35567/AKIRA-SOFTEDGE
       - key: AKIRA_CHAT_SPACE_ID
         value: akra35567/AKIRA-SOFTEDGE
       - key: NEXT_PUBLIC_SITE_URL

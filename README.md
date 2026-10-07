@@ -1,6 +1,6 @@
 # AKIRA UI
 
-Interface em Next.js para conversar com os Spaces públicos AKIRA. Usa `akra35567/AKIRA-SOFTEDGE` para respostas de chat e `akra35567/Akiragpu` para geração e análise de imagens. Inclui histórico no browser, pesquisa na web, análise de imagens e geração de imagens.
+Interface em Next.js para conversar com o Space público `akra35567/AKIRA-SOFTEDGE`, que atende o chat e a geração/análise de imagens. Inclui histórico no browser, pesquisa na web, análise de imagens e geração de imagens.
 
 ## Executar localmente
 
@@ -16,13 +16,15 @@ Abre `http://localhost:3000`. O ID do Space já vem configurado em `.env.example
 
 ## Endpoints do Space
 
-O chat liga-se ao Space Gradio `akra35567/AKIRA-SOFTEDGE`, usando a função publicada `/_send` e o histórico no formato Chatbot do Gradio. A URL `https://akra35567-akira-softedge.hf.space/api` não é, na publicação atual, uma API REST JSON; o Space está publicado como Gradio. As imagens continuam a usar o Space `akra35567/Akiragpu`:
+O chat e as imagens ligam-se ao Space Gradio `akra35567/AKIRA-SOFTEDGE`. A URL `https://akra35567-akira-softedge.hf.space/api` não é, na publicação atual, uma API REST JSON; o Space está publicado como Gradio:
 
 - `/_send` (AKIRA-SOFTEDGE) — resposta de conversa, com o histórico anterior da sessão.
-- `/generate_image` — geração de imagem com prompt e estilo.
+- `/generate_image` (AKIRA-SOFTEDGE) — geração de imagem com prompt e estilo.
 - `/describe_image` — análise de uma imagem codificada em base64.
 
-As rotas Next `/api/chat` e `/api/image` fazem as chamadas no servidor para não expor o token Hugging Face ao browser. Define `AKIRA_CHAT_SPACE_ID` para o Space de chat e `HF_SPACE_ID` para o Space de imagens. Erros do Space são devolvidos como erros HTTP explícitos, em vez de mensagens com aparência de sucesso.
+As rotas Next `/api/chat` e `/api/image` fazem as chamadas no servidor para não expor o token Hugging Face ao browser. Por padrão, ambas usam `akra35567/AKIRA-SOFTEDGE`; `AKIRA_CHAT_SPACE_ID` e `HF_SPACE_ID` podem ser configurados explicitamente. Erros do Space são devolvidos como erros HTTP explícitos, em vez de mensagens com aparência de sucesso.
+
+A geração de imagens no Space `akra35567/AKIRA-SOFTEDGE` tenta primeiro FLUX.1-dev através da Hugging Face Inference. Pollinations só é usado quando os tokens HF configurados atingem a quota (HTTP 402/429); erros de configuração, autenticação ou acesso ao modelo são devolvidos em vez de mascarados pelo fallback. Os tokens para inferência devem estar nas Variables and secrets do Space `AKIRA-SOFTEDGE`; o `HF_TOKEN` desta UI serve para a UI aceder ao Space e não substitui os secrets de inferência do backend.
 
 ## Docker e Render
 
@@ -30,7 +32,7 @@ O `Dockerfile` produz uma imagem standalone, multi-stage, com runtime Node.js 22
 
 ```powershell
 docker build -t akira-ui .
-docker run --rm -p 3000:3000 -e HF_SPACE_ID=akra35567/Akiragpu akira-ui
+docker run --rm -p 3000:3000 -e HF_SPACE_ID=akra35567/AKIRA-SOFTEDGE akira-ui
 ```
 
 No Render, cria um **Web Service** com runtime Docker na pasta `bot_ui`, ou aplica o `render.yaml`. Configura `HF_TOKEN` nos Environment Variables apenas se precisares de autenticação/quota adicional nos Spaces. As credenciais usadas em runtime configuram-se em **Render Dashboard → serviço → Environment** (e, no caso do SSO, também no serviço Railway da SoftEdge); **não** em GitHub → Settings → Secrets and variables → Actions, que só fornece segredos a workflows. `NEXT_PUBLIC_SITE_URL` define o domínio absoluto usado nas pré-visualizações e links partilhados; o padrão é `https://akira-ia.onrender.com`. O serviço usa o `PORT` que o Render fornece e só fica healthy quando `/api/health/ready` confirma o PostgreSQL e o segredo de sessão. A rota `/api/health` continua disponível como liveness. A geração de links rejeita hosts de bind ou endereços privados como `0.0.0.0:10000` e recorre ao domínio público do Render/configurado.
@@ -50,7 +52,7 @@ Define as variáveis no **Render Dashboard → AKIRA Web Service → Environment
 | Variável | Valor/instrução | Necessária para |
 | --- | --- | --- |
 | `AKIRA_CHAT_SPACE_ID` | `akra35567/AKIRA-SOFTEDGE` (predefinido) | Respostas do chat |
-| `HF_SPACE_ID` | `akra35567/Akiragpu` (predefinido) | Geração e análise de imagens |
+| `HF_SPACE_ID` | `akra35567/AKIRA-SOFTEDGE` (predefinido) | Geração e análise de imagens |
 | `HF_TOKEN` | Token pessoal Hugging Face; deixa vazio se os Spaces públicos funcionarem sem autenticação | Opcional; acesso/quota dos Spaces |
 | `NEXT_PUBLIC_SITE_URL` | `https://akira-ia.onrender.com` | URLs públicos, pré-visualizações e partilhas |
 | `DATABASE_URL` | URL **PostgreSQL** da base criada no Render; prefere a ligação interna | Contas, limites, sessão, links e assinaturas |

@@ -1,7 +1,7 @@
 import { Client } from "@gradio/client";
 
 const CHAT_SPACE_ID = process.env.AKIRA_CHAT_SPACE_ID || "akra35567/AKIRA-SOFTEDGE";
-const IMAGE_SPACE_ID = process.env.HF_SPACE_ID || "akra35567/Akiragpu";
+const IMAGE_SPACE_ID = process.env.HF_SPACE_ID || CHAT_SPACE_ID;
 const HF_TOKEN = process.env.HF_TOKEN?.trim();
 
 export type ChatMsg = { role: "user" | "assistant"; content: string };
