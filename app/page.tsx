@@ -46,6 +46,10 @@ const STYLES = ["foto realista", "anime", "ilustração", "3d", "cinematográfic
 const FILE_LIMIT = 8 * 1024 * 1024;
 const DOCUMENT_EXTENSIONS = new Set(["txt", "md", "markdown", "csv", "json", "pdf", "docx"]);
 
+function isWebSearchRequest(text: string) {
+  return /\b(pesquis\w*|procur\w*|busc\w*)\b.{0,40}\b(web|internet|online)\b|\b(web|internet|online)\b.{0,40}\b(pesquis\w*|procur\w*|busc\w*)\b/i.test(text);
+}
+
 function uid() {
   return crypto.randomUUID();
 }
@@ -95,6 +99,8 @@ export default function Page() {
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [slowRequest, setSlowRequest] = useState(false);
+  const [activityMessages, setActivityMessages] = useState(["A AKIRA está a pensar"]);
+  const [activityIndex, setActivityIndex] = useState(0);
   const [greetingRun, setGreetingRun] = useState(0);
   const [typedGreeting, setTypedGreeting] = useState("");
   const [typedQuestion, setTypedQuestion] = useState("");
@@ -278,6 +284,14 @@ export default function Page() {
   }, [activeId, messages.length, busy]);
 
   useEffect(() => {
+    if (!busy || slowRequest || activityMessages.length < 2) return;
+    const timer = setInterval(() => {
+      setActivityIndex((current) => (current + 1) % activityMessages.length);
+    }, 2400);
+    return () => clearInterval(timer);
+  }, [activityMessages.length, busy, slowRequest]);
+
+  useEffect(() => {
     function onShortcut(event: globalThis.KeyboardEvent) {
       if ((event.metaKey || event.ctrlKey) && event.key.toLocaleLowerCase() === "k") {
         event.preventDefault();
@@ -456,6 +470,17 @@ export default function Page() {
     pushMessage(chatId, userMessage);
     setInput("");
     setAttachment(null);
+    const nextActivityMessages = imgMode
+      ? ["A AKIRA está a criar a imagem", "A AKIRA está a dar forma à imagem"]
+      : attachment?.dataUrl
+        ? ["A AKIRA está a analisar a imagem", "A AKIRA está a interpretar os detalhes"]
+        : attachment?.text
+          ? ["A AKIRA está a analisar o ficheiro", "A AKIRA está a preparar o contexto"]
+          : isWebSearchRequest(content)
+            ? ["A AKIRA está a pesquisar na web", "A AKIRA está a organizar a pesquisa", "A AKIRA está a preparar os resultados"]
+            : ["A AKIRA está a pensar", "A AKIRA está a organizar as ideias", "A AKIRA está a preparar a resposta"];
+    setActivityMessages(nextActivityMessages);
+    setActivityIndex(0);
     setBusy(true);
     setSlowRequest(false);
     const slowWaitTimer = setTimeout(() => setSlowRequest(true), 8_000);
@@ -468,7 +493,8 @@ export default function Page() {
         const response = await fetch("/api/image", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ prompt: content, style: imageStyle }),
+          body: JSON.stringify({ prompt: content, style: imageStyle, history: previousHistory.slice(-8) }),
+          signal: AbortSignal.timeout(105_000),
         });
         const result = await readJson(response);
         if (!result || typeof result !== "object" || !("image" in result) || typeof result.image !== "string") {
@@ -494,6 +520,7 @@ export default function Page() {
                 imageB64: attachment.dataUrl,
                 prompt: content || "Descreve esta imagem em detalhe.",
               }),
+              signal: AbortSignal.timeout(105_000),
             });
             const imageResult = await readJson(imageResponse);
             if (!imageResult || typeof imageResult !== "object" || !("description" in imageResult) || typeof imageResult.description !== "string") {
@@ -501,6 +528,8 @@ export default function Page() {
             }
             const imageContext = `[imagem anexada: ${imageResult.description}]`;
             chatMessage += `\n\n${imageContext}`;
+            setActivityMessages(["A AKIRA está a pensar", "A AKIRA está a organizar as ideias", "A AKIRA está a preparar a resposta"]);
+            setActivityIndex(0);
             setChats((current) =>
               current.map((chat) =>
                 chat.id === chatId
@@ -520,6 +549,7 @@ export default function Page() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ message: chatMessage, history: previousHistory }),
+          signal: AbortSignal.timeout(115_000),
         });
         const result = await readJson(response);
         if (!result || typeof result !== "object" || !("reply" in result) || typeof result.reply !== "string") {
@@ -543,6 +573,9 @@ export default function Page() {
         setAttachment(attachment);
         setAuthMode("account");
         setAuthMessage(error.message);
+      } else if (error instanceof DOMException && error.name === "AbortError") {
+        setStatus("A pesquisa demorou mais de ~2 min — a Space ainda estava a pesquisar. Tenta de novo.");
+        setStatusKind("error");
       } else {
         setStatus(error instanceof Error ? error.message : "O pedido à AKIRA falhou.");
         setStatusKind("error");
@@ -862,9 +895,13 @@ export default function Page() {
               {busy && (
                 <div className="msg assistant">
                   <div className="assistant-mark"><Logo size={24} /></div>
-                  <div className="typing"><LoaderCircle size={15} className="spin" />{slowRequest
-                    ? " A resposta está a demorar; se a AKIRA estava inativa, pode estar a arrancar. Mantém esta página aberta."
-                    : " A AKIRA está a pensar"}</div>
+                  <div className="typing" aria-live="polite">
+                    <LoaderCircle size={15} className="spin" aria-hidden="true" />
+                    <span>{slowRequest
+                      ? "A resposta está a demorar; se a AKIRA estava inativa, pode estar a arrancar. Mantém esta página aberta."
+                      : activityMessages[activityIndex]}</span>
+                    {!slowRequest && <span className="typing-dots" aria-hidden="true"><i /><i /><i /></span>}
+                  </div>
                 </div>
               )}
               <div ref={bottomRef} />
