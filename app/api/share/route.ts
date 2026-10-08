@@ -11,13 +11,20 @@ export async function POST(request: NextRequest) {
   } catch {
     return NextResponse.json({ error: "O pedido não contém JSON válido." }, { status: 400 });
   }
-  const content = body && typeof body === "object" ? (body as Record<string, unknown>).content : null;
-  if (typeof content !== "string" || !content.trim()) {
+  const payload = body && typeof body === "object" ? body as Record<string, unknown> : null;
+  const answer = payload?.content;
+  const question = payload?.question;
+  if (typeof answer !== "string" || !answer.trim()) {
     return NextResponse.json({ error: "Não há conteúdo para partilhar." }, { status: 400 });
   }
-  if (content.length > 20_000) return NextResponse.json({ error: "A resposta é demasiado longa para partilhar." }, { status: 413 });
+  if (question !== undefined && typeof question !== "string") {
+    return NextResponse.json({ error: "A mensagem original é inválida." }, { status: 400 });
+  }
+  if (answer.length + (typeof question === "string" ? question.length : 0) > 20_000) {
+    return NextResponse.json({ error: "A conversa é demasiado longa para partilhar." }, { status: 413 });
+  }
   try {
-    const id = await createSharedMessage(content);
+    const id = await createSharedMessage(answer, typeof question === "string" ? question : undefined);
     return NextResponse.json({ url: new URL(`/share/${id}`, getPublicSiteUrl(request.url)).toString() });
   } catch (error) {
     console.error("Falha ao criar uma partilha AKIRA.", error);

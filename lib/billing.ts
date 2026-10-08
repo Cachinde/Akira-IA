@@ -385,9 +385,19 @@ export async function applyStripeEvent(event: Record<string, unknown>): Promise<
   }
 }
 
-export async function createSharedMessage(content: string): Promise<string> {
+export type SharedMessage = {
+  question: string | null;
+  answer: string;
+};
+
+export async function createSharedMessage(answer: string, question?: string): Promise<string> {
   await ensureBillingSchema();
   const id = randomUUID();
+  const content = JSON.stringify({
+    version: 1,
+    question: question?.trim() || null,
+    answer,
+  });
   await billingPool().query("DELETE FROM akira_shared_messages WHERE expires_at <= NOW()");
   await billingPool().query(
     "INSERT INTO akira_shared_messages (id, content, expires_at) VALUES ($1, $2, NOW() + INTERVAL '90 days')",
@@ -396,12 +406,33 @@ export async function createSharedMessage(content: string): Promise<string> {
   return id;
 }
 
-export async function loadSharedMessage(id: string): Promise<string | null> {
+export async function loadSharedMessage(id: string): Promise<SharedMessage | null> {
   if (!/^[0-9a-f-]{36}$/i.test(id)) return null;
   await ensureBillingSchema();
   const result = await billingPool().query<{ content: string }>(
     "SELECT content FROM akira_shared_messages WHERE id = $1 AND expires_at > NOW()",
     [id],
   );
-  return result.rows[0]?.content || null;
+  const content = result.rows[0]?.content;
+  if (!content) return null;
+
+  try {
+    const parsed: unknown = JSON.parse(content);
+    if (
+      parsed &&
+      typeof parsed === "object" &&
+      "version" in parsed &&
+      parsed.version === 1 &&
+      "answer" in parsed &&
+      typeof parsed.answer === "string" &&
+      "question" in parsed &&
+      (typeof parsed.question === "string" || parsed.question === null)
+    ) {
+      return { question: parsed.question, answer: parsed.answer };
+    }
+  } catch {
+    // Existing share rows contain the answer as plain text.
+  }
+
+  return { question: null, answer: content };
 }

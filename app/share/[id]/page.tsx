@@ -3,12 +3,12 @@ import Link from "next/link";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import Logo from "@/components/Logo";
-import { loadSharedMessage } from "@/lib/billing";
+import { loadSharedMessage, type SharedMessage } from "@/lib/billing";
 import { getPublicSiteUrl } from "@/lib/site-url";
 
 type Props = { params: Promise<{ id: string }> };
 
-async function sharedContent(params: Props["params"]): Promise<string | null> {
+async function sharedContent(params: Props["params"]): Promise<SharedMessage | null> {
   const { id } = await params;
   return loadSharedMessage(id);
 }
@@ -19,7 +19,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { id } = await params;
   const siteUrl = getPublicSiteUrl();
   const pageUrl = new URL(`/share/${encodeURIComponent(id)}`, siteUrl).toString();
-  const description = content.replace(/\s+/g, " ").slice(0, 180);
+  const description = [content.question, content.answer].filter(Boolean).join(" — ").replace(/\s+/g, " ").slice(0, 180);
   const image = new URL("/akira-share-v2.png", siteUrl).toString();
   return {
     title: "Resposta partilhada",
@@ -48,8 +48,17 @@ export default async function SharedMessagePage({ params }: Props) {
       <article className="share-card">
         {content ? (
           <>
-            <div className="share-byline"><Logo size={27} /><span>Resposta partilhada da AKIRA</span></div>
-            <div className="markdown-content"><ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown></div>
+            <div className="share-byline"><Logo size={27} /><span>Conversa partilhada da AKIRA</span></div>
+            {content.question && (
+              <section className="share-question">
+                <div className="share-section-label">MENSAGEM ORIGINAL</div>
+                <div className="markdown-content"><ReactMarkdown remarkPlugins={[remarkGfm]}>{content.question}</ReactMarkdown></div>
+              </section>
+            )}
+            <section className="share-answer">
+              <div className="share-section-label"><Logo size={20} /> RESPOSTA DA AKIRA</div>
+              <div className="markdown-content"><ReactMarkdown remarkPlugins={[remarkGfm]}>{content.answer}</ReactMarkdown></div>
+            </section>
           </>
         ) : (
           <div className="share-missing">
@@ -60,7 +69,7 @@ export default async function SharedMessagePage({ params }: Props) {
           </div>
         )}
       </article>
-      <footer className="share-footer">Qualquer pessoa com este link pode ver a resposta. A partilha expira ao fim de 90 dias.</footer>
+      <footer className="share-footer">Qualquer pessoa com este link pode ver a mensagem e a resposta partilhadas. A partilha expira ao fim de 90 dias.</footer>
     </main>
   );
 }

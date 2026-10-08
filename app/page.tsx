@@ -697,17 +697,21 @@ export default function Page() {
 
   async function shareMessage(message: Msg) {
     try {
+      const messageIndex = messages.findIndex((item) => item.id === message.id);
+      const question = messageIndex > 0
+        ? [...messages.slice(0, messageIndex)].reverse().find((item) => item.role === "user")?.content
+        : undefined;
       const response = await fetch("/api/share", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content: message.content }),
+        body: JSON.stringify({ content: message.content, question }),
       });
       const result = await readJson(response);
       if (!result || typeof result !== "object" || !("url" in result) || typeof result.url !== "string") {
         throw new Error("Não foi possível criar o link da resposta.");
       }
       await navigator.clipboard.writeText(result.url);
-      setStatus("Link da resposta copiado. Está disponível durante 90 dias.");
+      setStatus("Link da conversa copiado. Inclui a mensagem original e a resposta da AKIRA.");
       setStatusKind("success");
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Não foi possível partilhar a resposta.");
