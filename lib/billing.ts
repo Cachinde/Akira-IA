@@ -351,7 +351,10 @@ export async function applyStripeEvent(event: Record<string, unknown>): Promise<
         return;
       }
       const priceId = nestedText(object, "items", "data", "0", "price", "id");
-      const plan = planForPrice(priceId);
+      const metadataPlan = textField(metadata.plan);
+      const plan = metadataPlan === "pro" || metadataPlan === "ultra"
+        ? metadataPlan
+        : planForPrice(priceId);
       const status = textField(object.status) || "incomplete";
       const periodEnd = typeof object.current_period_end === "number"
         ? new Date(object.current_period_end * 1000).toISOString()

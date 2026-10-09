@@ -23,6 +23,82 @@ function stripeErrorDetails(value: unknown) {
   };
 }
 
+function isMatchingMonthlyPrice(value: unknown, plan: PaidPlan, liveMode: boolean): value is Record<string, unknown> {
+  if (!value || typeof value !== "object") return false;
+  const price = value as Record<string, unknown>;
+  const recurring = price.recurring && typeof price.recurring === "object"
+    ? price.recurring as Record<string, unknown>
+    : null;
+  return price.active === true &&
+    price.livemode === liveMode &&
+    price.currency === "usd" &&
+    price.unit_amount === (plan === "pro" ? 500 : 1_200) &&
+    recurring?.interval === "month" &&
+    recurring.interval_count === 1;
+}
+
+async function resolveStripePriceId(configuredId: string, plan: PaidPlan, secret: string): Promise<string> {
+  const liveMode = secret.startsWith("sk_live_");
+  const headers = { Authorization: `Bearer ${secret}` };
+  const requestOptions = { headers, cache: "no-store" as RequestCache, signal: AbortSignal.timeout(15_000) };
+
+  if (configuredId.startsWith("price_")) {
+    const response = await fetch(
+      `https://api.stripe.com/v1/prices/${encodeURIComponent(configuredId)}`,
+      requestOptions,
+    );
+    const result: unknown = await response.json();
+    if (!response.ok || !isMatchingMonthlyPrice(result, plan, liveMode) || result.id !== configuredId) {
+      console.error("Stripe rejected the configured subscription price.", {
+        plan,
+        priceSetting: PRICE_ENV[plan],
+        configuredIdPrefix: configuredId.slice(0, 8),
+        status: response.status,
+        ...stripeErrorDetails(result),
+      });
+      throw new Error("O preço Stripe configurado não corresponde ao plano.");
+    }
+    return configuredId;
+  }
+
+  if (!configuredId.startsWith("prod_")) {
+    console.error(`Stripe checkout is unavailable because ${PRICE_ENV[plan]} must contain a Product ID or Price ID.`);
+    throw new Error("A configuração deste plano está incompleta.");
+  }
+
+  const query = new URLSearchParams({ product: configuredId, active: "true", limit: "100" });
+  const response = await fetch(`https://api.stripe.com/v1/prices?${query}`, requestOptions);
+  const result: unknown = await response.json();
+  const prices = result && typeof result === "object" && "data" in result
+    ? (result as { data?: unknown }).data
+    : null;
+  const matchingPrices = Array.isArray(prices)
+    ? prices.filter((price) =>
+      isMatchingMonthlyPrice(price, plan, liveMode) &&
+      price.product === configuredId &&
+      typeof price.id === "string" &&
+      price.id.startsWith("price_"))
+    : [];
+
+  if (!response.ok || matchingPrices.length !== 1) {
+    console.error("Stripe product must have exactly one matching active monthly price for the plan.", {
+      plan,
+      priceSetting: PRICE_ENV[plan],
+      productIdPrefix: configuredId.slice(0, 8),
+      status: response.status,
+      matchingPriceCount: matchingPrices.length,
+      ...stripeErrorDetails(result),
+    });
+    throw new Error("O produto Stripe tem de ter exatamente um preço ativo correspondente ao plano.");
+  }
+
+  const resolvedPriceId = matchingPrices[0]?.id;
+  if (typeof resolvedPriceId !== "string") {
+    throw new Error("O Stripe não devolveu um Price ID válido para este produto.");
+  }
+  return resolvedPriceId;
+}
+
 export async function POST(request: NextRequest) {
   const secret = process.env.STRIPE_SECRET_KEY?.trim();
   const siteUrl = getPublicSiteUrl(request.url);
@@ -47,8 +123,8 @@ export async function POST(request: NextRequest) {
     console.error(`Stripe checkout is unavailable because ${PRICE_ENV[plan]} is missing.`);
     return NextResponse.json({ error: "As assinaturas estão temporariamente indisponíveis. Tenta novamente mais tarde." }, { status: 503 });
   }
-  if (!priceId.startsWith("price_")) {
-    console.error(`Stripe checkout is unavailable because ${PRICE_ENV[plan]} must contain a Price ID starting with price_.`);
+  if (!priceId.startsWith("price_") && !priceId.startsWith("prod_")) {
+    console.error(`Stripe checkout is unavailable because ${PRICE_ENV[plan]} must contain a Product ID or Price ID.`);
     return NextResponse.json({ error: "A configuração deste plano está incompleta. Contacta o suporte da AKIRA." }, { status: 503 });
   }
 
@@ -66,57 +142,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Já tens uma assinatura ativa. Gere-a no portal de faturação." }, { status: 409 });
     }
 
-    const expectedAmount = plan === "pro" ? 500 : 1_200;
-    const priceResponse = await fetch(`https://api.stripe.com/v1/prices/${encodeURIComponent(priceId)}`, {
-      headers: { Authorization: `Bearer ${secret}` },
-      cache: "no-store",
-      signal: AbortSignal.timeout(15_000),
-    });
-    const priceResult: unknown = await priceResponse.json();
-    if (!priceResponse.ok || !priceResult || typeof priceResult !== "object") {
-      console.error("Stripe rejected the configured subscription price.", {
-        plan,
-        priceSetting: PRICE_ENV[plan],
-        priceIdPrefix: priceId.slice(0, 6),
-        status: priceResponse.status,
-        ...stripeErrorDetails(priceResult),
-      });
-      throw new Error("O Stripe não reconheceu o Price ID configurado para este plano.");
-    }
-    const price = priceResult as Record<string, unknown>;
-    const recurring = price.recurring && typeof price.recurring === "object"
-      ? price.recurring as Record<string, unknown>
-      : null;
-    const priceIsValid =
-      price.id === priceId &&
-      price.livemode === secret.startsWith("sk_live_") &&
-      price.active === true &&
-      price.currency === "usd" &&
-      price.unit_amount === expectedAmount &&
-      recurring?.interval === "month" &&
-      recurring.interval_count === 1;
-    if (!priceIsValid) {
-      console.error("Configured Stripe subscription price does not match the required plan.", {
-        plan,
-        priceSetting: PRICE_ENV[plan],
-        priceIdPrefix: priceId.slice(0, 6),
-        idMatches: price.id === priceId,
-        livemodeMatches: price.livemode === secret.startsWith("sk_live_"),
-        active: price.active === true,
-        currency: price.currency,
-        unitAmount: price.unit_amount,
-        interval: recurring?.interval,
-        intervalCount: recurring?.interval_count,
-      });
-      throw new Error(`O preço do plano ${plan === "pro" ? "Pro" : "Ultra"} tem de estar ativo e ser USD ${plan === "pro" ? "5" : "12"} por mês, no mesmo modo da chave Stripe.`);
-    }
+    const stripePriceId = await resolveStripePriceId(priceId, plan, secret);
 
     const form = new URLSearchParams({
       mode: "subscription",
       success_url: `${siteUrl}/plans?checkout=success`,
       cancel_url: `${siteUrl}/plans?checkout=cancelled`,
       client_reference_id: identity.userId,
-      "line_items[0][price]": priceId,
+      "line_items[0][price]": stripePriceId,
       "line_items[0][quantity]": "1",
       "metadata[user_id]": identity.userId,
       "metadata[plan]": plan,
