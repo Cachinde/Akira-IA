@@ -13,6 +13,11 @@ type ImagePayload = {
   info?: unknown;
 };
 
+function isImageDataUrl(value: string): boolean {
+  const match = /^data:image\/(png|jpeg|webp);base64,([A-Za-z0-9+/]+={0,2})$/.exec(value);
+  return !!match && match[2].length >= 128;
+}
+
 type DescriptionPayload = {
   description?: unknown;
   error?: unknown;
@@ -118,11 +123,11 @@ export async function apiImage(
   const output = objectOutput<ImagePayload>(result.data, "geração de imagem");
   const image = typeof output.image === "string" ? output.image : "";
 
-  if (!image) {
+  if (!isImageDataUrl(image)) {
     throw new Error(
       typeof output.info === "string" && output.info
         ? `A AKIRA não conseguiu gerar a imagem: ${output.info}`
-        : "A AKIRA não devolveu uma imagem.",
+        : "A AKIRA não devolveu uma imagem PNG/JPEG/WebP válida em data URL.",
     );
   }
 

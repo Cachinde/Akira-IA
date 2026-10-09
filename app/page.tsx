@@ -522,9 +522,40 @@ export default function Page() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ prompt: content, style: imageStyle, history: previousHistory.slice(-8) }),
-          signal: AbortSignal.timeout(105_000),
+          signal: AbortSignal.timeout(15_000),
         });
-        const result = await readJson(response);
+        const started: unknown = await readJson(response);
+        if (!started || typeof started !== "object" || !("jobId" in started) || typeof started.jobId !== "string") {
+          throw new Error("A AKIRA não iniciou a geração da imagem corretamente.");
+        }
+
+        const deadline = Date.now() + 10 * 60_000;
+        let result: unknown;
+        while (Date.now() < deadline) {
+          await new Promise((resolve) => setTimeout(resolve, 1_500));
+          let pollResult: unknown;
+          try {
+            const pollResponse = await fetch(`/api/image?jobId=${encodeURIComponent(started.jobId)}`, {
+              cache: "no-store",
+              signal: AbortSignal.timeout(20_000),
+            });
+            pollResult = await readJson(pollResponse);
+          } catch (error) {
+            if (error instanceof DOMException && error.name === "TimeoutError") {
+              console.warn("Timeout ao consultar o estado da imagem; a AKIRA continuará a verificar.", error);
+              continue;
+            }
+            throw error;
+          }
+          if (pollResult && typeof pollResult === "object" && "status" in pollResult && pollResult.status === "processing") {
+            continue;
+          }
+          result = pollResult;
+          break;
+        }
+        if (!result) {
+          throw new Error("A geração demorou mais de 10 minutos. O pedido foi restaurado para poderes tentar novamente.");
+        }
         if (!result || typeof result !== "object" || !("image" in result) || typeof result.image !== "string") {
           throw new Error("A AKIRA não devolveu uma imagem válida.");
         }
@@ -602,10 +633,16 @@ export default function Page() {
         setAttachment(attachment);
         setAuthMode("account");
         setAuthMessage(error.message);
-      } else if (error instanceof DOMException && error.name === "AbortError") {
-        setStatus("A pesquisa demorou mais de ~2 min — a Space ainda estava a pesquisar. Tenta de novo.");
+      } else if (error instanceof DOMException && (error.name === "AbortError" || error.name === "TimeoutError")) {
+        if (imgMode) {
+          setInput(content);
+          setStatus("A geração da imagem excedeu o tempo limite. O pedido foi restaurado para poderes tentar novamente.");
+        } else {
+          setStatus("A pesquisa demorou mais de ~2 min — a Space ainda estava a pesquisar. Tenta de novo.");
+        }
         setStatusKind("error");
       } else {
+        if (imgMode) setInput(content);
         setStatus(error instanceof Error ? error.message : "O pedido à AKIRA falhou.");
         setStatusKind("error");
       }

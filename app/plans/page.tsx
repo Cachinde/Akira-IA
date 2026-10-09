@@ -6,14 +6,14 @@ import { ArrowLeft, Check, LoaderCircle, Sparkles } from "lucide-react";
 
 type Billing = {
   plan: "free" | "pro" | "ultra";
-  limits: { messages: number; files: number; period: "day" | "month" | "lifetime" };
-  used: { messages: number; files: number };
+  limits: { messages: number; files: number; images: number; period: "day" | "month" | "lifetime" };
+  used: { messages: number; files: number; images: number };
 };
 
 const plans = [
-  { id: "free", name: "Gratuito", price: "0", period: "para sempre", messages: "10 mensagens grátis; 20/dia com conta", files: "3 ficheiros por dia", featured: false },
-  { id: "pro", name: "Pro", price: "5", period: "por mês", messages: "1.000 mensagens por mês", files: "100 ficheiros por mês", featured: true },
-  { id: "ultra", name: "Ultra", price: "12", period: "por mês", messages: "5.000 mensagens por mês", files: "500 ficheiros por mês", featured: false },
+  { id: "free", name: "Gratuito", price: "0", period: "para sempre", messages: "10 mensagens grátis; 20/dia com conta", files: "3 ficheiros por dia", images: "3 imagens por dia", featured: false },
+  { id: "pro", name: "Pro", price: "5", period: "por mês", messages: "1.000 mensagens por mês", files: "100 ficheiros por mês", images: "10 imagens por dia", featured: true },
+  { id: "ultra", name: "Ultra", price: "12", period: "por mês", messages: "5.000 mensagens por mês", files: "500 ficheiros por mês", images: "30 imagens por dia", featured: false },
 ] as const;
 
 export default function PlansPage() {
@@ -89,7 +89,7 @@ export default function PlansPage() {
         {billing && (
           <div className="plan-usage">
             Plano atual: <strong>{plans.find((plan) => plan.id === billing.plan)?.name}</strong>
-            <span>{billing.used.messages}/{billing.limits.messages} mensagens · {billing.used.files}/{billing.limits.files} ficheiros neste período</span>
+            <span>{billing.used.messages}/{billing.limits.messages} mensagens · {billing.used.files}/{billing.limits.files} ficheiros · {billing.used.images}/{billing.limits.images} imagens hoje</span>
           </div>
         )}
         {error && <p className="plans-notice" role="status">{error}</p>}
@@ -103,7 +103,7 @@ export default function PlansPage() {
               <h2>{plan.name}</h2>
               <p className="plan-price"><span>$</span>{plan.price}<small> USD / {plan.period}</small></p>
               <p className="plan-description">{plan.id === "free" ? "O essencial para começares." : plan.id === "pro" ? "Para usar a AKIRA todos os dias." : "Para levar a produtividade mais longe."}</p>
-              <ul><li><Check size={15} />{plan.messages}</li><li><Check size={15} />{plan.files}</li><li><Check size={15} />Histórico guardado no teu navegador</li></ul>
+              <ul><li><Check size={15} />{plan.messages}</li><li><Check size={15} />{plan.files}</li><li><Check size={15} />{plan.images}</li><li><Check size={15} />Histórico guardado no teu navegador</li></ul>
               {plan.id === "free" ? (
                 <Link className={`plan-action ${current ? "current" : ""}`} href="/">{current ? "Plano atual" : "Começar grátis"}</Link>
               ) : current ? (

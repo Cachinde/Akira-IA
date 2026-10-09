@@ -3,9 +3,9 @@ import { Pool, type PoolClient } from "pg";
 import type { NextRequest, NextResponse } from "next/server";
 
 export const PLAN_LIMITS = {
-  free: { messages: 20, files: 3, period: "day" },
-  pro: { messages: 1_000, files: 100, period: "month" },
-  ultra: { messages: 5_000, files: 500, period: "month" },
+  free: { messages: 20, files: 3, images: 3, period: "day" },
+  pro: { messages: 1_000, files: 100, images: 10, period: "month" },
+  ultra: { messages: 5_000, files: 500, images: 30, period: "month" },
 } as const;
 
 export const GUEST_MESSAGE_LIMIT = 10;
@@ -63,11 +63,14 @@ export async function ensureBillingSchema(): Promise<void> {
           ON akira_billing_accounts (LOWER(email)) WHERE email IS NOT NULL;
         CREATE TABLE IF NOT EXISTS akira_billing_usage (
           user_id UUID NOT NULL REFERENCES akira_billing_accounts(user_id) ON DELETE CASCADE,
-          metric TEXT NOT NULL CHECK (metric IN ('messages', 'files')),
+          metric TEXT NOT NULL CHECK (metric IN ('messages', 'files', 'images')),
           period_start DATE NOT NULL,
           usage_count INTEGER NOT NULL DEFAULT 0 CHECK (usage_count >= 0),
           PRIMARY KEY (user_id, metric, period_start)
         );
+        ALTER TABLE akira_billing_usage DROP CONSTRAINT IF EXISTS akira_billing_usage_metric_check;
+        ALTER TABLE akira_billing_usage
+          ADD CONSTRAINT akira_billing_usage_metric_check CHECK (metric IN ('messages', 'files', 'images'));
         CREATE TABLE IF NOT EXISTS akira_billing_events (
           event_id TEXT PRIMARY KEY,
           received_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -107,6 +110,16 @@ export async function ensureBillingSchema(): Promise<void> {
           created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
           expires_at TIMESTAMPTZ NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS akira_image_jobs (
+          job_id UUID PRIMARY KEY,
+          user_id UUID NOT NULL REFERENCES akira_billing_accounts(user_id) ON DELETE CASCADE,
+          status TEXT NOT NULL CHECK (status IN ('processing', 'complete', 'failed')),
+          result JSONB,
+          error TEXT,
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS akira_image_jobs_updated_at
+          ON akira_image_jobs (updated_at);
       `);
     })().catch((error: unknown) => {
       globalForBilling.akiraBillingSchema = undefined;
@@ -114,6 +127,55 @@ export async function ensureBillingSchema(): Promise<void> {
     });
   }
   return globalForBilling.akiraBillingSchema;
+}
+
+export type ImageJobStatus = "processing" | "complete" | "failed";
+export type ImageJobResult = { image: string; info: string };
+
+export async function createImageJob(userId: string): Promise<string> {
+  await ensureBillingSchema();
+  const jobId = randomUUID();
+  await billingPool().query(
+    `DELETE FROM akira_image_jobs WHERE updated_at < NOW() - INTERVAL '15 minutes'`,
+  );
+  await billingPool().query(
+    "INSERT INTO akira_image_jobs (job_id, user_id, status) VALUES ($1, $2, 'processing')",
+    [jobId, userId],
+  );
+  return jobId;
+}
+
+export async function updateImageJob(
+  jobId: string,
+  update: { status: "complete"; result: ImageJobResult } | { status: "failed"; error: string },
+): Promise<void> {
+  await ensureBillingSchema();
+  await billingPool().query(
+    `UPDATE akira_image_jobs
+     SET status = $2, result = $3, error = $4, updated_at = NOW()
+     WHERE job_id = $1`,
+    [jobId, update.status, update.status === "complete" ? JSON.stringify(update.result) : null,
+      update.status === "failed" ? update.error : null],
+  );
+}
+
+export async function getImageJob(jobId: string, userId: string): Promise<{
+  status: ImageJobStatus;
+  result: ImageJobResult | null;
+  error: string | null;
+} | null> {
+  await ensureBillingSchema();
+  const result = await billingPool().query<{
+    status: ImageJobStatus;
+    result: ImageJobResult | null;
+    error: string | null;
+  }>(
+    `SELECT status, result, error
+     FROM akira_image_jobs
+     WHERE job_id = $1 AND user_id = $2 AND updated_at >= NOW() - INTERVAL '15 minutes'`,
+    [jobId, userId],
+  );
+  return result.rows[0] || null;
 }
 
 function cookieSecret(): string {
@@ -162,6 +224,10 @@ function currentPeriod(period: "day" | "month"): string {
   return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}-01`;
 }
 
+function currentImagePeriod(): string {
+  return new Date(Date.now() + 60 * 60 * 1000).toISOString().slice(0, 10);
+}
+
 async function activePlan(client: PoolClient, userId: string): Promise<PlanId> {
   await client.query("INSERT INTO akira_billing_accounts (user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING", [userId]);
   const result = await client.query<{ plan: PlanId; subscription_status: string; email: string | null; display_name: string | null }>(
@@ -185,21 +251,27 @@ export async function planSnapshot(userId: string) {
       [userId],
     );
     const isGuest = !account.rows[0]?.email;
-    const today = currentPeriod("day");
-    const usage = await client.query<{ metric: "messages" | "files"; usage_count: number }>(
+    const imageDay = currentImagePeriod();
+    const usage = await client.query<{ metric: "messages" | "files" | "images"; usage_count: number }>(
       `SELECT metric, usage_count
        FROM akira_billing_usage
        WHERE user_id = $1 AND (
          (metric = 'messages' AND period_start = $2) OR
-         (metric = 'files' AND period_start = $3)
+         (metric = 'files' AND period_start = $2) OR
+         (metric = 'images' AND period_start = $3)
        )`,
-      [userId, isGuest ? "1970-01-01" : currentPeriod(limits.period), today],
+      [userId, isGuest && plan === "free" ? "1970-01-01" : currentPeriod(limits.period), imageDay],
     );
-    const used = { messages: 0, files: 0 };
+    const used = { messages: 0, files: 0, images: 0 };
     for (const row of usage.rows) used[row.metric] = Number(row.usage_count);
     return {
       plan,
-      limits: { messages: isGuest ? GUEST_MESSAGE_LIMIT : limits.messages, files: limits.files, period: isGuest ? "lifetime" as const : limits.period },
+      limits: {
+        messages: isGuest ? GUEST_MESSAGE_LIMIT : limits.messages,
+        files: limits.files,
+        images: limits.images,
+        period: isGuest && plan === "free" ? "lifetime" as const : limits.period,
+      },
       used,
     };
   } finally {
@@ -226,7 +298,7 @@ export async function saveBillingCustomer(userId: string, customerId: string): P
   );
 }
 
-export async function consumeUsage(userId: string, metric: "messages" | "files") {
+export async function consumeUsage(userId: string, metric: "messages" | "files" | "images") {
   await ensureBillingSchema();
   const client = await billingPool().connect();
   try {
@@ -237,14 +309,14 @@ export async function consumeUsage(userId: string, metric: "messages" | "files")
       [userId],
     );
     const account = registered.rows[0];
-    if (!account?.display_name && metric === "messages") {
+    if (!account?.display_name && metric !== "files") {
       await client.query("COMMIT");
       return { allowed: false as const, plan, limit: GUEST_MESSAGE_LIMIT, requiresAccount: false, requiresProfile: true };
     }
     const isGuest = !account?.email;
     const limits = PLAN_LIMITS[plan];
     const limit = metric === "messages" && isGuest ? GUEST_MESSAGE_LIMIT : limits[metric];
-    const periodStart = isGuest && metric === "messages" ? "1970-01-01" : currentPeriod(limits.period);
+    const periodStart = isGuest && metric === "messages" ? "1970-01-01" : currentPeriod(metric === "images" ? "day" : limits.period);
     const updated = await client.query(
       `INSERT INTO akira_billing_usage (user_id, metric, period_start, usage_count)
        VALUES ($1, $2, $3, 1)
@@ -260,6 +332,65 @@ export async function consumeUsage(userId: string, metric: "messages" | "files")
     }
     await client.query("COMMIT");
     return { allowed: true as const, plan, limit, requiresAccount: false, requiresProfile: false };
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+export async function consumeImageUsage(userId: string) {
+  await ensureBillingSchema();
+  const client = await billingPool().connect();
+  try {
+    await client.query("BEGIN");
+    const plan = await activePlan(client, userId);
+    const registered = await client.query<{ email: string | null; display_name: string | null }>(
+      "SELECT email, display_name FROM akira_billing_accounts WHERE user_id = $1",
+      [userId],
+    );
+    const account = registered.rows[0];
+    if (!account?.display_name) {
+      await client.query("COMMIT");
+      return { allowed: false as const, plan, limit: GUEST_MESSAGE_LIMIT, requiresAccount: false, requiresProfile: true, metric: "messages" as const };
+    }
+
+    const isGuest = !account.email;
+    const limits = PLAN_LIMITS[plan];
+    const periodStart = isGuest ? "1970-01-01" : currentPeriod(limits.period);
+    const messageLimit = isGuest ? GUEST_MESSAGE_LIMIT : limits.messages;
+    const imagePeriodStart = currentImagePeriod();
+    const metrics = [
+      { metric: "messages", limit: messageLimit, periodStart },
+      { metric: "images", limit: limits.images, periodStart: imagePeriodStart },
+    ] as const;
+
+    for (const usageMetric of metrics) {
+      const updated = await client.query(
+        `INSERT INTO akira_billing_usage (user_id, metric, period_start, usage_count)
+         VALUES ($1, $2, $3, 1)
+         ON CONFLICT (user_id, metric, period_start)
+         DO UPDATE SET usage_count = akira_billing_usage.usage_count + 1
+         WHERE akira_billing_usage.usage_count < $4
+         RETURNING usage_count`,
+        [userId, usageMetric.metric, usageMetric.periodStart, usageMetric.limit],
+      );
+      if (!updated.rowCount) {
+        await client.query("ROLLBACK");
+        return {
+          allowed: false as const,
+          plan,
+          limit: usageMetric.limit,
+          requiresAccount: usageMetric.metric === "messages" && isGuest,
+          requiresProfile: false,
+          metric: usageMetric.metric,
+        };
+      }
+    }
+
+    await client.query("COMMIT");
+    return { allowed: true as const, plan, limit: limits.images, requiresAccount: false, requiresProfile: false };
   } catch (error) {
     await client.query("ROLLBACK");
     throw error;

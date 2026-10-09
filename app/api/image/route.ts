@@ -1,11 +1,56 @@
 import { NextRequest, NextResponse } from "next/server";
 import { apiImage, apiDescribe } from "@/lib/space";
-import { consumeUsage, getOrCreateUser, setUserCookie } from "@/lib/billing";
+import {
+  consumeImageUsage,
+  consumeUsage,
+  createImageJob,
+  getImageJob,
+  getOrCreateUser,
+  setUserCookie,
+  updateImageJob,
+} from "@/lib/billing";
 import { CHAT_MESSAGE_CHARACTER_LIMIT, IMAGE_GENERATION_CHARACTER_LIMIT } from "@/lib/chat-limits";
 
 export const runtime = "nodejs";
+export const maxDuration = 180;
 
 const IMAGE_STYLES = new Set(["foto realista", "anime", "ilustração", "3d", "cinematográfico", "aquarela"]);
+
+export async function GET(req: NextRequest) {
+  const jobId = new URL(req.url).searchParams.get("jobId");
+  if (!jobId || !/^[0-9a-f-]{36}$/i.test(jobId)) {
+    return NextResponse.json({ error: "O identificador da geração é inválido." }, { status: 400 });
+  }
+
+  const identity = getOrCreateUser(req);
+  const job = await getImageJob(jobId, identity.userId);
+  if (!job) {
+    return NextResponse.json(
+      { error: "Esta geração não existe ou já expirou." },
+      { status: 404, headers: { "Cache-Control": "no-store" } },
+    );
+  }
+  if (job.status === "processing") {
+    return NextResponse.json(
+      { status: "processing" },
+      { status: 202, headers: { "Cache-Control": "no-store" } },
+    );
+  }
+
+  if (job.status === "failed") {
+    return NextResponse.json(
+      { error: job.error || "Não foi possível gerar a imagem." },
+      { status: 503, headers: { "Cache-Control": "no-store" } },
+    );
+  }
+  if (!job.result) {
+    return NextResponse.json(
+      { error: "A geração terminou sem devolver uma imagem." },
+      { status: 503, headers: { "Cache-Control": "no-store" } },
+    );
+  }
+  return NextResponse.json(job.result, { headers: { "Cache-Control": "no-store" } });
+}
 
 export async function POST(req: NextRequest) {
   let body: unknown;
@@ -72,13 +117,20 @@ export async function POST(req: NextRequest) {
       : [];
 
     const identity = getOrCreateUser(req);
-    const usage = await consumeUsage(identity.userId, "messages");
+    const usage = await consumeImageUsage(identity.userId);
     if (usage.requiresProfile) {
       const response = NextResponse.json({ error: "Escolhe primeiro o nome que a AKIRA deve usar contigo." }, { status: 403 });
       if (identity.created) setUserCookie(response, identity.userId);
       return response;
     }
     if (!usage.allowed) {
+      if (usage.metric === "images") {
+        const response = NextResponse.json({
+          error: `Atingiste o limite diário de ${usage.limit} imagens do plano ${usage.plan}. Tenta novamente amanhã ou muda de plano.`,
+        }, { status: 429 });
+        if (identity.created) setUserCookie(response, identity.userId);
+        return response;
+      }
       const response = NextResponse.json({
         ...(usage.requiresAccount ? { code: "account_required" } : {}),
         error: usage.requiresAccount
@@ -88,7 +140,21 @@ export async function POST(req: NextRequest) {
       if (identity.created) setUserCookie(response, identity.userId);
       return response;
     }
-    const response = NextResponse.json(await apiImage(prompt, style, history));
+
+    const jobId = await createImageJob(identity.userId);
+    void apiImage(prompt, style, history)
+      .then((result) => {
+        return updateImageJob(jobId, { status: "complete", result });
+      })
+      .catch((error: unknown) => {
+        console.error("Falha na geração assíncrona da imagem da AKIRA.", error);
+        const message = error instanceof Error ? error.message : "Erro inesperado na geração da imagem.";
+        return updateImageJob(jobId, { status: "failed", error: message }).catch((persistenceError: unknown) => {
+          console.error("Falha ao guardar o estado de erro da geração de imagem.", persistenceError);
+        });
+      });
+
+    const response = NextResponse.json({ jobId }, { status: 202 });
     if (identity.created) setUserCookie(response, identity.userId);
     return response;
   } catch (error) {
