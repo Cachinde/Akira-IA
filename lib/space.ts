@@ -13,9 +13,127 @@ type ImagePayload = {
   info?: unknown;
 };
 
+const MAX_IMAGE_BYTES = 12 * 1024 * 1024;
+
 function isImageDataUrl(value: string): boolean {
-  const match = /^data:image\/(png|jpeg|webp);base64,([A-Za-z0-9+/]+={0,2})$/.exec(value);
+  const match = /^data:image\/(png|jpeg|jpg|webp);base64,([A-Za-z0-9+/]+={0,2})$/i.exec(value);
   return !!match && match[2].length >= 128;
+}
+
+function isAllowedImageUrl(value: string): URL {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new Error("A Space devolveu um URL de imagem inválido.");
+  }
+  const spaceHost = `${IMAGE_SPACE_ID.replace("/", "-")}.hf.space`.toLowerCase();
+  if (url.protocol !== "https:" || url.hostname.toLowerCase() !== spaceHost) {
+    throw new Error("A Space devolveu uma imagem alojada num domínio não autorizado.");
+  }
+  return url;
+}
+
+async function downloadImageDataUrl(url: string): Promise<string> {
+  let currentUrl = url;
+  for (let redirectCount = 0; redirectCount <= 3; redirectCount += 1) {
+    const response = await fetch(isAllowedImageUrl(currentUrl), {
+      redirect: "manual",
+      signal: AbortSignal.timeout(60_000),
+    });
+    if (response.status >= 300 && response.status < 400) {
+      const location = response.headers.get("location");
+      if (!location || redirectCount === 3) {
+        throw new Error("A Space redirecionou demasiadas vezes ao devolver a imagem.");
+      }
+      currentUrl = new URL(location, currentUrl).toString();
+      continue;
+    }
+    if (!response.ok) {
+      throw new Error(`Não foi possível descarregar a imagem da Space (HTTP ${response.status}).`);
+    }
+
+    const mimeType = response.headers.get("content-type")?.split(";")[0].trim().toLowerCase();
+    if (!mimeType || !["image/png", "image/jpeg", "image/webp"].includes(mimeType)) {
+      throw new Error("A Space devolveu um ficheiro que não é PNG, JPEG ou WebP.");
+    }
+    const contentLength = Number(response.headers.get("content-length"));
+    if (Number.isFinite(contentLength) && contentLength > MAX_IMAGE_BYTES) {
+      throw new Error("A imagem devolvida pela Space excede o limite de 12 MB.");
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) throw new Error("Não foi possível ler os dados da imagem devolvida pela Space.");
+    const chunks: Uint8Array[] = [];
+    let totalBytes = 0;
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        totalBytes += value.byteLength;
+        if (totalBytes > MAX_IMAGE_BYTES) {
+          await reader.cancel();
+          throw new Error("A imagem devolvida pela Space excede o limite de 12 MB.");
+        }
+        chunks.push(value);
+      }
+    } finally {
+      reader.releaseLock();
+    }
+    if (totalBytes < 96) throw new Error("A Space devolveu um ficheiro de imagem vazio ou incompleto.");
+
+    const bytes = new Uint8Array(totalBytes);
+    let offset = 0;
+    for (const chunk of chunks) {
+      bytes.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    let binary = "";
+    for (let index = 0; index < bytes.length; index += 0x8000) {
+      binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000));
+    }
+    const dataUrl = `data:${mimeType};base64,${btoa(binary)}`;
+    if (!isImageDataUrl(dataUrl)) throw new Error("A Space devolveu dados de imagem inválidos.");
+    return dataUrl;
+  }
+  throw new Error("Não foi possível obter a imagem da Space.");
+}
+
+async function normalizeImageValue(value: unknown, depth = 0): Promise<string | null> {
+  if (depth > 4) return null;
+  if (typeof value === "string") {
+    if (isImageDataUrl(value)) return value.replace(/^data:image\/jpg;/i, "data:image/jpeg;");
+    if (/^https:\/\//i.test(value)) return downloadImageDataUrl(value);
+    const base64 = value.replace(/\s/g, "");
+    if (base64.length >= 128 && /^[A-Za-z0-9+/]+={0,2}$/.test(base64)) {
+      return `data:image/png;base64,${base64}`;
+    }
+    return null;
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const image = await normalizeImageValue(item, depth + 1);
+      if (image) return image;
+    }
+    return null;
+  }
+  if (!value || typeof value !== "object") return null;
+
+  const imageObject = value as Record<string, unknown>;
+  for (const key of ["image", "url", "data", "base64", "path"]) {
+    if (key === "path" && typeof imageObject.path === "string" && imageObject.path.startsWith("/")) {
+      const spaceHost = `${IMAGE_SPACE_ID.replace("/", "-")}.hf.space`.toLowerCase();
+      const filePath = imageObject.path.startsWith("/gradio_api/file=")
+        ? imageObject.path
+        : `/gradio_api/file=${imageObject.path}`;
+      const image = await downloadImageDataUrl(`https://${spaceHost}${filePath}`);
+      if (image) return image;
+      continue;
+    }
+    const image = await normalizeImageValue(imageObject[key], depth + 1);
+    if (image) return image;
+  }
+  return null;
 }
 
 type DescriptionPayload = {
@@ -121,13 +239,18 @@ export async function apiImage(
   const client = await imageSpaceClient();
   const result = await client.predict("/generate_image", [prompt, style, JSON.stringify(history)]);
   const output = objectOutput<ImagePayload>(result.data, "geração de imagem");
-  const image = typeof output.image === "string" ? output.image : "";
+  const image = await normalizeImageValue(output.image ?? output);
 
-  if (!isImageDataUrl(image)) {
+  if (!image) {
+    const outputKeys = Object.keys(output).join(", ") || "nenhum";
+    console.error("A resposta da Space não contém imagem reconhecível.", {
+      outputKeys,
+      imageType: typeof output.image,
+    });
     throw new Error(
       typeof output.info === "string" && output.info
         ? `A AKIRA não conseguiu gerar a imagem: ${output.info}`
-        : "A AKIRA não devolveu uma imagem PNG/JPEG/WebP válida em data URL.",
+        : `A Space terminou a geração, mas não devolveu uma imagem reconhecível (campos: ${outputKeys}).`,
     );
   }
 

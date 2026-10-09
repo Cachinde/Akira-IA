@@ -43,10 +43,20 @@ export async function GET(req: NextRequest) {
       { status: 503, headers: { "Cache-Control": "no-store" } },
     );
   }
-  if (!job.result) {
+  if (
+    !job.result ||
+    typeof job.result !== "object" ||
+    typeof job.result.image !== "string" ||
+    !job.result.image.startsWith("data:image/")
+  ) {
+    console.error("A tarefa de imagem terminou com um resultado inválido.", {
+      jobId,
+      resultType: typeof job.result,
+      resultKeys: job.result && typeof job.result === "object" ? Object.keys(job.result) : [],
+    });
     return NextResponse.json(
-      { error: "A geração terminou sem devolver uma imagem." },
-      { status: 503, headers: { "Cache-Control": "no-store" } },
+      { error: "A geração terminou, mas a imagem não chegou completa ao bot_ui. Tenta novamente." },
+      { status: 502, headers: { "Cache-Control": "no-store" } },
     );
   }
   return NextResponse.json(job.result, { headers: { "Cache-Control": "no-store" } });
