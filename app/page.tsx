@@ -12,6 +12,7 @@ import {
   ImagePlus,
   Lightbulb,
   LoaderCircle,
+  Maximize2,
   Menu,
   MessageSquarePlus,
   MoreHorizontal,
@@ -152,10 +153,12 @@ export default function Page() {
   const [historyReady, setHistoryReady] = useState(false);
   const [historyWritable, setHistoryWritable] = useState(false);
   const [storageError, setStorageError] = useState("");
+  const [expandedImage, setExpandedImage] = useState<{ src: string; alt: string } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const threadRef = useRef<HTMLElement>(null);
   const shouldFollowMessages = useRef(true);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const imageViewerCloseRef = useRef<HTMLButtonElement>(null);
 
   const activeChat = chats.find((chat) => chat.id === activeId) || null;
   const messages = activeChat?.messages || [];
@@ -328,6 +331,22 @@ export default function Page() {
   }, [activityMessages.length, busy, slowRequest]);
 
   useEffect(() => {
+    if (!expandedImage) return;
+
+    const previousFocus = document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    imageViewerCloseRef.current?.focus();
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      previousFocus?.focus();
+    };
+  }, [expandedImage]);
+
+  useEffect(() => {
     function onShortcut(event: globalThis.KeyboardEvent) {
       if ((event.metaKey || event.ctrlKey) && event.key.toLocaleLowerCase() === "k") {
         event.preventDefault();
@@ -338,6 +357,7 @@ export default function Page() {
         setToolsOpen(false);
         setChatMenu(null);
         setQuotaNotice(null);
+        setExpandedImage(null);
       }
     }
 
@@ -972,19 +992,39 @@ export default function Page() {
                 <article key={message.id} className={`msg ${message.role}`}>
                   {message.role === "assistant" && <div className="assistant-mark"><Logo size={24} /></div>}
                   <div className="message-content">
-                    {message.attachment && <img className="attached-image" src={message.attachment} alt="Imagem anexada" onLoad={() => {
-                      const thread = threadRef.current;
-                      if (shouldFollowMessages.current && thread) thread.scrollTop = thread.scrollHeight;
-                    }} />}
+                    {message.attachment && (
+                      <button
+                        className="image-expand-trigger"
+                        onClick={() => setExpandedImage({ src: message.attachment!, alt: "Imagem anexada" })}
+                        aria-label="Ampliar imagem anexada para ecrã inteiro"
+                        title="Abrir imagem em ecrã inteiro"
+                      >
+                        <img className="attached-image" src={message.attachment} alt="Imagem anexada" onLoad={() => {
+                          const thread = threadRef.current;
+                          if (shouldFollowMessages.current && thread) thread.scrollTop = thread.scrollHeight;
+                        }} />
+                        <span className="image-expand-hint"><Maximize2 size={13} /> Ampliar</span>
+                      </button>
+                    )}
                     <div className={`bubble ${message.role === "assistant" ? "markdown-content" : ""}`}>
                       {message.role === "assistant"
                         ? <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
                         : message.content}
                     </div>
-                    {message.image && <img className="gen" src={message.image} alt="Imagem gerada pela AKIRA" onLoad={() => {
-                      const thread = threadRef.current;
-                      if (shouldFollowMessages.current && thread) thread.scrollTop = thread.scrollHeight;
-                    }} />}
+                    {message.image && (
+                      <button
+                        className="image-expand-trigger generated-image-trigger"
+                        onClick={() => setExpandedImage({ src: message.image!, alt: "Imagem gerada pela AKIRA" })}
+                        aria-label="Ampliar imagem gerada para ecrã inteiro"
+                        title="Abrir imagem em ecrã inteiro"
+                      >
+                        <img className="gen" src={message.image} alt="Imagem gerada pela AKIRA" onLoad={() => {
+                          const thread = threadRef.current;
+                          if (shouldFollowMessages.current && thread) thread.scrollTop = thread.scrollHeight;
+                        }} />
+                        <span className="image-expand-hint"><Maximize2 size={13} /> Ampliar</span>
+                      </button>
+                    )}
                     {message.attachmentName && <span className="message-attachment"><Paperclip size={12} /> {message.attachmentName}</span>}
                     <div className="message-actions">
                       <button
@@ -1136,6 +1176,34 @@ export default function Page() {
           <p className="composer-footer"><Clock3 size={12} /> A AKIRA pode cometer erros. Confirma informações importantes.</p>
         </div>
       </main>
+      {expandedImage && (
+        <div
+          className="image-viewer-overlay"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setExpandedImage(null);
+          }}
+        >
+          <section
+            className="image-viewer-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Imagem em ecrã inteiro"
+          >
+            <button
+              ref={imageViewerCloseRef}
+              className="image-viewer-close icon-button"
+              onClick={() => setExpandedImage(null)}
+              aria-label="Fechar imagem ampliada"
+              title="Fechar (Esc)"
+            >
+              <X size={19} />
+            </button>
+            <img className="image-viewer-image" src={expandedImage.src} alt={expandedImage.alt} />
+            <span className="image-viewer-hint">Pressiona Esc ou clica fora da imagem para fechar</span>
+          </section>
+        </div>
+      )}
       {quotaNotice && (
        <div
          className="quota-overlay"
