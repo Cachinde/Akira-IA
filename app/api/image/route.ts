@@ -136,6 +136,8 @@ export async function POST(req: NextRequest) {
     if (!usage.allowed) {
       if (usage.metric === "images") {
         const response = NextResponse.json({
+          code: "quota_exceeded",
+          metric: "images",
           error: `Atingiste o limite diário de ${usage.limit} imagens do plano ${usage.plan}. Tenta novamente amanhã ou muda de plano.`,
         }, { status: 429 });
         if (identity.created) setUserCookie(response, identity.userId);
@@ -143,6 +145,7 @@ export async function POST(req: NextRequest) {
       }
       const response = NextResponse.json({
         ...(usage.requiresAccount ? { code: "account_required" } : {}),
+        ...(!usage.requiresAccount ? { code: "quota_exceeded", metric: "messages" } : {}),
         error: usage.requiresAccount
           ? "As dez mensagens grátis terminaram. Cria a tua conta gratuita para continuares."
           : `Atingiste o limite de ${usage.limit} mensagens do plano ${usage.plan}.`,

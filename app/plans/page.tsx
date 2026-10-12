@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Check, LoaderCircle, Sparkles } from "lucide-react";
+import { ArrowLeft, ArrowUpRight, Check, LoaderCircle, Sparkles } from "lucide-react";
 
 type Billing = {
   plan: "free" | "pro" | "ultra";
@@ -19,7 +19,11 @@ const plans = [
 export default function PlansPage() {
   const [billing, setBilling] = useState<Billing | null>(null);
   const [error, setError] = useState("");
+  const [planNotice, setPlanNotice] = useState("");
+  const [accountRequired, setAccountRequired] = useState(false);
+  const [requestedPlan, setRequestedPlan] = useState<"pro" | "ultra" | null>(null);
   const [busy, setBusy] = useState("");
+  const noticeRef = useRef<HTMLDivElement>(null);
   const refresh = useCallback(async () => {
     const response = await fetch("/api/billing", { cache: "no-store" });
     const result: unknown = await response.json();
@@ -32,6 +36,14 @@ export default function PlansPage() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const checkout = params.get("checkout");
+    const notice = params.get("notice");
+    if (notice === "messages" || notice === "images") {
+      setPlanNotice(
+        notice === "images"
+          ? "Atingiste o limite de imagens do teu plano. Compara as opções para continuares a criar."
+          : "Atingiste o limite de mensagens do teu plano. Compara as opções para continuares a conversar.",
+      );
+    }
     let active = true;
     if (checkout === "success") {
       setError("Pagamento recebido. Estamos a confirmar a assinatura…");
@@ -59,9 +71,19 @@ export default function PlansPage() {
     return () => { active = false; };
   }, [refresh]);
 
+  useEffect(() => {
+    if (!planNotice) return;
+    const frame = window.requestAnimationFrame(() => {
+      noticeRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [planNotice]);
+
   async function submit(action: "pro" | "ultra" | "portal") {
     setBusy(action);
     setError("");
+    setPlanNotice("");
+    setAccountRequired(false);
     try {
       const response = await fetch(action === "portal" ? "/api/billing/portal" : "/api/billing/checkout", {
         method: "POST",
@@ -70,6 +92,19 @@ export default function PlansPage() {
       });
       const result: unknown = await response.json();
       if (!response.ok || !result || typeof result !== "object" || !("url" in result) || typeof result.url !== "string") {
+        if (
+          response.status === 403 &&
+          result &&
+          typeof result === "object" &&
+          "code" in result &&
+          result.code === "account_required"
+        ) {
+          setAccountRequired(true);
+          setRequestedPlan(action === "portal" ? null : action);
+          setPlanNotice("Antes de assinar, cria uma conta e confirma o teu e-mail. A assinatura ficará associada à tua conta.");
+          setBusy("");
+          return;
+        }
         throw new Error(result && typeof result === "object" && "error" in result ? String(result.error) : "Não foi possível iniciar a operação.");
       }
       window.location.assign(result.url);
@@ -92,7 +127,16 @@ export default function PlansPage() {
             <span>{billing.used.messages}/{billing.limits.messages} mensagens · {billing.used.files}/{billing.limits.files} ficheiros · {billing.used.images}/{billing.limits.images} imagens hoje</span>
           </div>
         )}
-        {error && <p className="plans-notice" role="status">{error}</p>}
+        {(error || planNotice) && (
+          <div className={`plans-notice ${accountRequired ? "plans-notice-account" : ""}`} ref={noticeRef} role="status" tabIndex={-1}>
+            <p>{planNotice || error}</p>
+            {accountRequired && (
+              <Link href={`/login?reason=subscription${requestedPlan ? `&plan=${requestedPlan}` : ""}`} className="plans-account-link">
+                Criar conta ou entrar <ArrowUpRight size={14} />
+              </Link>
+            )}
+          </div>
+        )}
       </section>
       <section className="plan-grid" aria-label="Planos de assinatura">
         {plans.map((plan) => {

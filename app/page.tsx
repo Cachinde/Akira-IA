@@ -47,6 +47,15 @@ type AuthMode = "profile" | "account" | null;
 
 class AccountRequiredError extends Error {}
 
+class UsageLimitError extends Error {
+  constructor(
+    readonly metric: "messages" | "images",
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
 const STYLES = ["foto realista", "anime", "ilustração", "3d", "cinematográfico", "aquarela"];
 const FILE_LIMIT = 8 * 1024 * 1024;
 const DOCUMENT_EXTENSIONS = new Set(["txt", "md", "markdown", "csv", "json", "pdf", "docx"]);
@@ -86,6 +95,16 @@ async function readJson(response: Response) {
     if (data && typeof data === "object" && "code" in data && data.code === "account_required") {
       throw new AccountRequiredError(responseError(data, "Cria uma conta grátis para continuares."));
     }
+    if (
+      data &&
+      typeof data === "object" &&
+      "code" in data &&
+      data.code === "quota_exceeded" &&
+      "metric" in data &&
+      (data.metric === "messages" || data.metric === "images")
+    ) {
+      throw new UsageLimitError(data.metric, responseError(data, "Atingiste o limite de utilização do teu plano."));
+    }
     throw new Error(responseError(data, "O pedido à AKIRA não foi concluído."));
   }
   return data;
@@ -117,6 +136,7 @@ export default function Page() {
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("");
   const [statusKind, setStatusKind] = useState<"error" | "success" | "">("");
+  const [quotaNotice, setQuotaNotice] = useState<UsageLimitError | null>(null);
   const [imageStyle, setImageStyle] = useState(STYLES[0]);
   const [attachment, setAttachment] = useState<{ name: string; dataUrl?: string; text?: string } | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -317,6 +337,7 @@ export default function Page() {
         setSideOpen(false);
         setToolsOpen(false);
         setChatMenu(null);
+        setQuotaNotice(null);
       }
     }
 
@@ -633,6 +654,15 @@ export default function Page() {
         setAttachment(attachment);
         setAuthMode("account");
         setAuthMessage(error.message);
+      } else if (error instanceof UsageLimitError) {
+        setChats((current) => current.map((chat) =>
+          chat.id === chatId
+            ? { ...chat, messages: chat.messages.filter((message) => message.id !== userMessage.id) }
+            : chat,
+        ));
+        setInput(content);
+        setAttachment(attachment);
+        setQuotaNotice(error);
       } else if (error instanceof DOMException && (error.name === "AbortError" || error.name === "TimeoutError")) {
         if (imgMode) {
           setInput(content);
@@ -894,7 +924,7 @@ export default function Page() {
         </header>
 
         <section
-          className="thread"
+          className={`thread ${messages.length > 0 ? "has-messages" : ""}`}
           aria-live="polite"
           ref={threadRef}
           onScroll={(event) => {
@@ -1106,6 +1136,36 @@ export default function Page() {
           <p className="composer-footer"><Clock3 size={12} /> A AKIRA pode cometer erros. Confirma informações importantes.</p>
         </div>
       </main>
+      {quotaNotice && (
+       <div
+         className="quota-overlay"
+         role="presentation"
+         onMouseDown={(event) => {
+           if (event.target === event.currentTarget) setQuotaNotice(null);
+         }}
+       >
+         <section className="quota-dialog" role="dialog" aria-modal="true" aria-labelledby="quota-title" aria-describedby="quota-description">
+           <button className="quota-close icon-button" onClick={() => setQuotaNotice(null)} aria-label="Fechar aviso">
+             <X size={17} />
+           </button>
+           <span className="quota-icon"><Sparkles size={21} /></span>
+           <span className="quota-eyebrow">LIMITE DO PLANO ATINGIDO</span>
+           <h2 id="quota-title">{quotaNotice.metric === "images" ? "Queres criar mais imagens?" : "Continua a conversar com a AKIRA."}</h2>
+           <p id="quota-description">{quotaNotice.message}</p>
+           <div className="quota-actions">
+             <a
+               className="quota-upgrade"
+               href={`/plans?notice=${quotaNotice.metric}`}
+               autoFocus
+               onClick={() => setQuotaNotice(null)}
+             >
+               Ver planos e continuar <ArrowUpRight size={15} />
+             </a>
+             <button className="quota-dismiss" onClick={() => setQuotaNotice(null)}>Agora não</button>
+           </div>
+         </section>
+       </div>
+      )}
       {authMode && (
         <div className="account-overlay" role="presentation">
           <section className="account-dialog" role="dialog" aria-modal="true" aria-labelledby="account-title">

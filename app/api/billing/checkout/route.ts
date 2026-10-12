@@ -100,12 +100,7 @@ async function resolveStripePriceId(configuredId: string, plan: PaidPlan, secret
 }
 
 export async function POST(request: NextRequest) {
-  const secret = process.env.STRIPE_SECRET_KEY?.trim();
   const siteUrl = getPublicSiteUrl(request.url);
-  if (!secret || !/^sk_(test|live)_/.test(secret)) {
-    console.error("Stripe checkout is unavailable because the server API key is missing or invalid.");
-    return NextResponse.json({ error: "As assinaturas estão temporariamente indisponíveis. Tenta novamente mais tarde." }, { status: 503 });
-  }
 
   let body: unknown;
   try {
@@ -118,28 +113,38 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Escolhe um plano válido." }, { status: 400 });
   }
 
-  const priceId = process.env[PRICE_ENV[plan]]?.trim();
-  if (!priceId) {
-    console.error(`Stripe checkout is unavailable because ${PRICE_ENV[plan]} is missing.`);
-    return NextResponse.json({ error: "As assinaturas estão temporariamente indisponíveis. Tenta novamente mais tarde." }, { status: 503 });
-  }
-  if (!priceId.startsWith("price_") && !priceId.startsWith("prod_")) {
-    console.error(`Stripe checkout is unavailable because ${PRICE_ENV[plan]} must contain a Product ID or Price ID.`);
-    return NextResponse.json({ error: "A configuração deste plano está incompleta. Contacta o suporte da AKIRA." }, { status: 503 });
-  }
-
   try {
     const identity = getOrCreateUser(request);
     const account = await getAuthSnapshot(identity.userId);
     if (!account.authenticated) {
-      return NextResponse.json(
-        { error: "Confirma primeiro o teu e-mail para associar a assinatura à tua conta." },
+      const response = NextResponse.json(
+        {
+          code: "account_required",
+          error: "Cria uma conta e confirma o teu e-mail antes de assinar. Assim podemos associar o plano à tua conta.",
+        },
         { status: 403 },
       );
+      if (identity.created) setUserCookie(response, identity.userId);
+      return response;
     }
     const current = await planSnapshot(identity.userId);
     if (current.plan !== "free") {
       return NextResponse.json({ error: "Já tens uma assinatura ativa. Gere-a no portal de faturação." }, { status: 409 });
+    }
+
+    const secret = process.env.STRIPE_SECRET_KEY?.trim();
+    if (!secret || !/^sk_(test|live)_/.test(secret)) {
+      console.error("Stripe checkout is unavailable because the server API key is missing or invalid.");
+      return NextResponse.json({ error: "As assinaturas estão temporariamente indisponíveis. Tenta novamente mais tarde." }, { status: 503 });
+    }
+    const priceId = process.env[PRICE_ENV[plan]]?.trim();
+    if (!priceId) {
+      console.error(`Stripe checkout is unavailable because ${PRICE_ENV[plan]} is missing.`);
+      return NextResponse.json({ error: "As assinaturas estão temporariamente indisponíveis. Tenta novamente mais tarde." }, { status: 503 });
+    }
+    if (!priceId.startsWith("price_") && !priceId.startsWith("prod_")) {
+      console.error(`Stripe checkout is unavailable because ${PRICE_ENV[plan]} must contain a Product ID or Price ID.`);
+      return NextResponse.json({ error: "A configuração deste plano está incompleta. Contacta o suporte da AKIRA." }, { status: 503 });
     }
 
     const stripePriceId = await resolveStripePriceId(priceId, plan, secret);

@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, ArrowUpRight, Check, LoaderCircle, Mail, ShieldCheck, Sparkles } from "lucide-react";
 import Logo from "@/components/Logo";
@@ -12,9 +12,20 @@ export default function LoginPage() {
   const [sent, setSent] = useState(false);
   const [message, setMessage] = useState("");
   const [isError, setIsError] = useState(false);
+  const [subscriptionNotice, setSubscriptionNotice] = useState("");
+  const loginCardRef = useRef<HTMLElement>(null);
+  const displayNameRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    const authResult = new URLSearchParams(window.location.search).get("auth");
+    const params = new URLSearchParams(window.location.search);
+    const authResult = params.get("auth");
+    if (params.get("reason") === "subscription") {
+      setSubscriptionNotice("Para activar uma assinatura, cria uma conta e confirma o teu e-mail. Depois poderás associar o teu plano à conta.");
+      window.setTimeout(() => {
+        loginCardRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+        displayNameRef.current?.focus({ preventScroll: true });
+      }, 80);
+    }
     if (authResult === "unavailable") {
       setIsError(true);
       setMessage("Este método de entrada está temporariamente indisponível. Usa o e-mail ou tenta mais tarde.");
@@ -73,12 +84,13 @@ export default function LoginPage() {
           </a>
         </aside>
 
-        <section className="login-card" aria-labelledby="login-title">
+        <section className="login-card" aria-labelledby="login-title" ref={loginCardRef}>
           <Link href="/" className="login-back"><ArrowLeft size={15} /> Voltar ao chat</Link>
           <div className="login-mobile-brand"><Logo size={34} /><span>AKIRA</span></div>
           <span className="login-eyebrow"><Sparkles size={13} /> BEM-VINDO DE VOLTA</span>
           <h2 id="login-title">Entra na tua conta</h2>
           <p className="login-intro">Escolhe como queres continuar com a AKIRA.</p>
+          {subscriptionNotice && <div className="login-message subscription-notice" role="status">{subscriptionNotice}</div>}
 
           <div className="login-providers">
             <a className="login-provider" href="/api/auth/google">
@@ -98,6 +110,7 @@ export default function LoginPage() {
             <label htmlFor="login-name">Como queres que a AKIRA te chame?</label>
             <input
               id="login-name"
+              ref={displayNameRef}
               autoComplete="nickname"
               maxLength={40}
               minLength={2}
