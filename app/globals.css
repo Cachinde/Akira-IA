@@ -196,6 +196,7 @@ button:disabled { cursor: not-allowed; }
 .msg { display: flex; min-width: 0; align-items: flex-start; gap: 11px; animation: float-in .28s ease both; }
 .msg.user { justify-content: flex-end; }
 .message-content { display: flex; min-width: 0; max-width: 86%; flex-direction: column; }
+.message-content.has-generated-image { width: min(100%, 820px); max-width: calc(100% - 40px); }
 .msg.user .message-content { align-items: flex-end; }
 .assistant-mark { display: grid; width: 29px; height: 29px; flex: 0 0 auto; overflow: hidden; place-items: center; margin-top: 2px; border: 1px solid rgba(199,183,255,.13); border-radius: 10px; background: #18171b; }
 .assistant-mark .logo-crop { border: 0; border-radius: 0; background: transparent; }
@@ -222,7 +223,7 @@ button:disabled { cursor: not-allowed; }
 .msg.user .bubble { padding: 11px 14px; border: 1px solid rgba(255,255,255,.06); border-radius: 16px 16px 5px 16px; background: #232326; }
 .msg.assistant .bubble { padding: 3px 0; }
 .attached-image { display: block; max-width: min(100%,260px); max-height: 220px; margin-bottom: 9px; border: 1px solid var(--line-strong); border-radius: 11px; object-fit: contain; }
-.gen { display: block; max-width: min(100%,520px); max-height: 540px; margin-top: 11px; border: 1px solid var(--line-strong); border-radius: 14px; background: #1b1b1e; object-fit: contain; }
+.gen { display: block; width: 100%; height: auto; max-width: 100%; max-height: min(78dvh,900px); margin-top: 11px; border: 1px solid var(--line-strong); border-radius: 14px; background: #1b1b1e; object-fit: contain; }
 .image-expand-trigger { position: relative; display: block; max-width: 100%; padding: 0; border: 0; border-radius: 14px; background: transparent; color: inherit; cursor: zoom-in; text-align: left; }
 .image-expand-trigger:focus-visible { outline: 2px solid var(--lilac); outline-offset: 3px; }
 .image-expand-trigger .attached-image, .image-expand-trigger .gen { transition: filter .18s ease; }
@@ -233,7 +234,7 @@ button:disabled { cursor: not-allowed; }
 .generated-image-trigger .image-expand-hint { bottom: 8px; }
 .image-viewer-overlay { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: max(24px, env(safe-area-inset-top)) max(24px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom)) max(24px, env(safe-area-inset-left)); background: rgba(5,5,7,.94); backdrop-filter: blur(14px); animation: float-in .18s ease both; }
 .image-viewer-dialog { position: relative; display: grid; width: 100%; height: 100%; place-items: center; }
-.image-viewer-image { display: block; max-width: 100%; max-height: 100%; border: 1px solid rgba(255,255,255,.1); border-radius: 10px; background: #111113; object-fit: contain; box-shadow: 0 24px 90px rgba(0,0,0,.48); }
+.image-viewer-image { display: block; width: auto; height: auto; max-width: 100%; max-height: 100%; border: 1px solid rgba(255,255,255,.1); border-radius: 10px; background: #111113; object-fit: contain; box-shadow: 0 24px 90px rgba(0,0,0,.48); }
 .image-viewer-close { position: absolute; z-index: 1; top: 10px; right: 10px; width: 42px; height: 42px; border: 1px solid rgba(255,255,255,.16); border-radius: 50%; background: rgba(22,21,26,.86); color: #f3eff8; }
 .image-viewer-close:hover { border-color: rgba(199,183,255,.55); background: rgba(45,40,54,.95); }
 .image-viewer-hint { position: absolute; bottom: 5px; color: #aaa4b1; font-size: 10px; text-align: center; }
@@ -496,7 +497,8 @@ button:disabled { cursor: not-allowed; }
   .msg.user .message-content { max-width: 88%; }
   .bubble { font-size: 14px; line-height: 1.65; }
   .msg .bubble, .markdown-content pre, .markdown-content table { max-width: 100%; }
-  .gen { max-width: 100%; max-height: min(60dvh, 540px); }
+  .message-content.has-generated-image { width: auto; max-width: calc(100% - 34px); }
+  .gen { width: 100%; max-width: 100%; max-height: min(78dvh, 780px); }
   .image-viewer-overlay { padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left)); }
   .image-viewer-close { top: 8px; right: 8px; }
   .image-viewer-hint { bottom: 4px; max-width: calc(100% - 64px); font-size: 9px; }

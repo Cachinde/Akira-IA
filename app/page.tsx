@@ -991,7 +991,7 @@ export default function Page() {
               {messages.map((message) => (
                 <article key={message.id} className={`msg ${message.role}`}>
                   {message.role === "assistant" && <div className="assistant-mark"><Logo size={24} /></div>}
-                  <div className="message-content">
+                  <div className={`message-content ${message.image ? "has-generated-image" : ""}`}>
                     {message.attachment && (
                       <button
                         className="image-expand-trigger"
