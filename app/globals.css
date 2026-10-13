@@ -505,7 +505,11 @@ button:disabled { cursor: not-allowed; }
   .msg.user .message-content { max-width: 88%; }
   .bubble { font-size: 14px; line-height: 1.65; }
   .msg .bubble, .markdown-content pre, .markdown-content table { max-width: 100%; }
-  .message-content.has-generated-image { width: auto; max-width: calc(100% - 34px); }
+  .message-content.has-generated-image { width: calc(100% - 34px); max-width: calc(100% - 34px); }
+  .message-content.has-generated-image .generated-image-trigger { width: 100%; }
+  .message-content.has-generated-image .message-actions { width: 100%; min-width: 0; flex-wrap: wrap; align-items: center; gap: 6px; }
+  .message-content.has-generated-image .message-actions .icon-button { min-width: 36px; min-height: 36px; flex: 0 0 auto; justify-content: center; }
+  .message-content.has-generated-image .message-actions .feedback-button { width: 36px; min-width: 36px; height: 36px; padding: 0; }
   .gen { width: 100%; max-width: 100%; max-height: min(78dvh, 780px); }
   .image-viewer-close { top: max(12px, calc(env(safe-area-inset-top) + 8px)); right: max(12px, calc(env(safe-area-inset-right) + 8px)); width: 44px; height: 44px; }
   .image-viewer-hint { bottom: max(12px, calc(env(safe-area-inset-bottom) + 8px)); max-width: calc(100vw - 24px); font-size: 9px; }
@@ -575,6 +579,8 @@ button:disabled { cursor: not-allowed; }
   .space-status { gap: 5px; font-size: 8px; }
   .model { font-size: 10px; }
   .msg.user .message-content { max-width: 92%; }
+  .message-content.has-generated-image .message-actions .icon-button:not(.feedback-button) { width: 36px; padding: 0; }
+  .message-content.has-generated-image .message-actions .icon-button:not(.feedback-button) span { display: none; }
   .message-actions .icon-button { height: 32px; padding: 0 8px; font-size: 10px; }
   .message-time { font-size: 10px; }
 }

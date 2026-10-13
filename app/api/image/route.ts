@@ -12,7 +12,7 @@ import {
 import { CHAT_MESSAGE_CHARACTER_LIMIT, IMAGE_GENERATION_CHARACTER_LIMIT } from "@/lib/chat-limits";
 
 export const runtime = "nodejs";
-export const maxDuration = 180;
+export const maxDuration = 300;
 
 const IMAGE_STYLES = new Set(["foto realista", "anime", "ilustração", "3d", "cinematográfico", "aquarela"]);
 
@@ -115,6 +115,17 @@ export async function POST(req: NextRequest) {
     if (editingImage && imageToEdit.length > 11_000_000) {
       return NextResponse.json({ error: "A imagem excede o limite de 8 MB." }, { status: 413 });
     }
+    const providerModel =
+      typeof input.imageProviderModel === "string" ? input.imageProviderModel.trim() : "";
+    if (providerModel.length > 160) {
+      return NextResponse.json({ error: "O provider/modelo da imagem é inválido." }, { status: 400 });
+    }
+    if (editingImage && !providerModel) {
+      return NextResponse.json(
+        { error: "Não é possível identificar o provider/modelo que gerou esta imagem. Gera uma nova imagem para poderes editá-la." },
+        { status: 409 },
+      );
+    }
 
     const style = typeof input.style === "string" && IMAGE_STYLES.has(input.style)
       ? input.style
@@ -166,7 +177,7 @@ export async function POST(req: NextRequest) {
 
     const jobId = await createImageJob(identity.userId);
     const generation = editingImage
-      ? apiEditImage(prompt, imageToEdit)
+      ? apiEditImage(prompt, imageToEdit, providerModel)
       : apiImage(prompt, style, history);
     void generation
       .then((result) => {

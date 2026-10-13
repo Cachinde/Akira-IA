@@ -4,6 +4,7 @@ export type Msg = {
   content: string;
   context?: string;
   image?: string;
+  imageProviderModel?: string;
   attachment?: string;
   attachmentName?: string;
   feedback?: "positive" | "negative";
@@ -75,6 +76,9 @@ function normalizeChat(chat: Chat, index: number): Chat {
       createdAt,
       ...(typeof candidate.context === "string" ? { context: candidate.context } : {}),
       ...(typeof candidate.image === "string" ? { image: candidate.image } : {}),
+      ...(typeof candidate.imageProviderModel === "string"
+        ? { imageProviderModel: candidate.imageProviderModel }
+        : {}),
       ...(typeof candidate.attachment === "string" ? { attachment: candidate.attachment } : {}),
       ...(typeof candidate.attachmentName === "string" ? { attachmentName: candidate.attachmentName } : {}),
       ...(candidate.feedback === "positive" || candidate.feedback === "negative"

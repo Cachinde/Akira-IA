@@ -158,7 +158,11 @@ export default function Page() {
   const [quotaNotice, setQuotaNotice] = useState<UsageLimitError | null>(null);
   const [countdownNow, setCountdownNow] = useState(Date.now());
   const [imageStyle, setImageStyle] = useState(STYLES[0]);
-  const [editTarget, setEditTarget] = useState<{ messageId: string; image: string } | null>(null);
+  const [editTarget, setEditTarget] = useState<{
+    messageId: string;
+    image: string;
+    providerModel?: string;
+  } | null>(null);
   const [attachment, setAttachment] = useState<{ name: string; dataUrl?: string; text?: string } | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [feedbackBusyId, setFeedbackBusyId] = useState<string | null>(null);
@@ -620,7 +624,15 @@ export default function Page() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            ...(editTarget ? { action: "edit", imageB64: editTarget.image } : {}),
+            ...(editTarget
+              ? {
+                  action: "edit",
+                  imageB64: editTarget.image,
+                  ...(editTarget.providerModel
+                    ? { imageProviderModel: editTarget.providerModel }
+                    : {}),
+                }
+              : {}),
             prompt: content,
             style: imageStyle,
             history: previousHistory.slice(-8),
@@ -632,7 +644,7 @@ export default function Page() {
           throw new Error("A AKIRA não iniciou a geração da imagem corretamente.");
         }
 
-        const deadline = Date.now() + 10 * 60_000;
+        const deadline = Date.now() + 5 * 60_000;
         let result: unknown;
         while (Date.now() < deadline) {
           await new Promise((resolve) => setTimeout(resolve, 1_500));
@@ -657,12 +669,26 @@ export default function Page() {
           break;
         }
         if (!result) {
-          throw new Error("A geração demorou mais de 10 minutos. O pedido foi restaurado para poderes tentar novamente.");
+          throw new Error("A geração demorou mais de 5 minutos. O pedido foi restaurado para poderes tentar novamente.");
         }
         if (!result || typeof result !== "object" || !("image" in result) || typeof result.image !== "string") {
           throw new Error("A AKIRA não devolveu uma imagem válida.");
         }
-        pushMessage(chatId, makeMessage("assistant", editTarget ? "A imagem editada está pronta." : "A imagem está pronta.", { image: result.image }));
+        const resultProviderModel =
+          "providerModel" in result && typeof result.providerModel === "string"
+            ? result.providerModel
+            : undefined;
+        pushMessage(
+          chatId,
+          makeMessage(
+            "assistant",
+            editTarget ? "A imagem editada está pronta." : "A imagem está pronta.",
+            {
+              image: result.image,
+              ...(resultProviderModel ? { imageProviderModel: resultProviderModel } : {}),
+            },
+          ),
+        );
         if (!authSnapshot.authenticated) {
           const guestMessagesUsed = authSnapshot.guestMessagesUsed + 1;
           setAuthSnapshot((current) => current ? { ...current, guestMessagesUsed } : current);
@@ -713,7 +739,7 @@ export default function Page() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ message: chatMessage, context: chatContext, history: previousHistory }),
-          signal: AbortSignal.timeout(115_000),
+          signal: AbortSignal.timeout(300_000),
         });
         const result = await readJson(response);
         if (!result || typeof result !== "object" || !("reply" in result) || typeof result.reply !== "string") {
@@ -749,9 +775,9 @@ export default function Page() {
       } else if (error instanceof DOMException && (error.name === "AbortError" || error.name === "TimeoutError")) {
         if (imageRequest) {
           setInput(content);
-          setStatus("O processamento da imagem excedeu o tempo limite. O pedido foi restaurado para poderes tentar novamente.");
+          setStatus("O processamento da imagem excedeu o limite de 5 minutos. O pedido foi restaurado para poderes tentar novamente.");
         } else {
-          setStatus("A pesquisa demorou mais de ~2 min — a Space ainda estava a pesquisar. Tenta de novo.");
+          setStatus("A resposta demorou mais de 5 minutos. A AKIRA pode ainda estar a processar o pedido; tenta novamente.");
         }
         setStatusKind("error");
       } else {
@@ -851,7 +877,11 @@ export default function Page() {
     setImgMode(false);
     setAttachment(null);
     setInput("");
-    setEditTarget({ messageId: message.id, image: message.image });
+    setEditTarget({
+      messageId: message.id,
+      image: message.image,
+      ...(message.imageProviderModel ? { providerModel: message.imageProviderModel } : {}),
+    });
     setStatus("");
     setStatusKind("");
     inputRef.current?.focus();

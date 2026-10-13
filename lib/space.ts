@@ -6,11 +6,12 @@ const HF_TOKEN = process.env.HF_TOKEN?.trim();
 
 export type ChatMsg = { role: "user" | "assistant"; content: string };
 export type ChatResult = { reply: string; provider: string };
-export type ImageResult = { image: string; info: string };
+export type ImageResult = { image: string; info: string; providerModel?: string };
 
 type ImagePayload = {
   image?: unknown;
   info?: unknown;
+  providerModel?: unknown;
 };
 
 const MAX_IMAGE_BYTES = 12 * 1024 * 1024;
@@ -257,16 +258,21 @@ export async function apiImage(
   return {
     image,
     info: typeof output.info === "string" ? output.info : "Imagem criada",
+    ...(typeof output.providerModel === "string" ? { providerModel: output.providerModel } : {}),
   };
 }
 
-export async function apiEditImage(prompt: string, imageB64: string): Promise<ImageResult> {
+export async function apiEditImage(
+  prompt: string,
+  imageB64: string,
+  providerModel: string,
+): Promise<ImageResult> {
   const apiSecret = process.env.AKIRA_IMAGE_EDIT_SECRET?.trim();
   if (!apiSecret || apiSecret.length < 32) {
     throw new Error("A edição de imagens requer AKIRA_IMAGE_EDIT_SECRET com pelo menos 32 caracteres no servidor.");
   }
   const client = await imageSpaceClient();
-  const result = await client.predict("/edit_image", [prompt, imageB64, apiSecret]);
+  const result = await client.predict("/edit_image", [prompt, imageB64, apiSecret, providerModel]);
   const output = objectOutput<ImagePayload>(result.data, "edição de imagem");
   const image = await normalizeImageValue(output.image ?? output);
 
@@ -286,6 +292,7 @@ export async function apiEditImage(prompt: string, imageB64: string): Promise<Im
   return {
     image,
     info: typeof output.info === "string" ? output.info : "Imagem editada",
+    ...(typeof output.providerModel === "string" ? { providerModel: output.providerModel } : {}),
   };
 }
 

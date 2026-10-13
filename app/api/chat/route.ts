@@ -7,7 +7,7 @@ import {
 } from "@/lib/chat-limits";
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 export async function POST(req: NextRequest) {
   let body: unknown;
