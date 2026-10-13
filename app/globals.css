@@ -232,12 +232,12 @@ button:disabled { cursor: not-allowed; }
 .image-expand-hint { position: absolute; right: 9px; bottom: 17px; display: inline-flex; align-items: center; gap: 5px; padding: 6px 8px; border: 1px solid rgba(255,255,255,.14); border-radius: 8px; background: rgba(12,11,15,.82); color: #f1edf7; font-size: 9px; opacity: 0; pointer-events: none; transform: translateY(3px); transition: opacity .18s ease, transform .18s ease; }
 .image-expand-trigger:hover .image-expand-hint, .image-expand-trigger:focus-visible .image-expand-hint { opacity: 1; transform: translateY(0); }
 .generated-image-trigger .image-expand-hint { bottom: 8px; }
-.image-viewer-overlay { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: max(24px, env(safe-area-inset-top)) max(24px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom)) max(24px, env(safe-area-inset-left)); background: rgba(5,5,7,.94); backdrop-filter: blur(14px); animation: float-in .18s ease both; }
-.image-viewer-dialog { position: relative; display: grid; width: 100%; height: 100%; place-items: center; }
-.image-viewer-image { display: block; width: auto; height: auto; max-width: 100%; max-height: 100%; border: 1px solid rgba(255,255,255,.1); border-radius: 10px; background: #111113; object-fit: contain; box-shadow: 0 24px 90px rgba(0,0,0,.48); }
-.image-viewer-close { position: absolute; z-index: 1; top: 10px; right: 10px; width: 42px; height: 42px; border: 1px solid rgba(255,255,255,.16); border-radius: 50%; background: rgba(22,21,26,.86); color: #f3eff8; }
+.image-viewer-overlay { position: fixed; inset: 0; z-index: 100; display: grid; width: 100vw; height: 100vh; height: 100dvh; place-items: center; overflow: hidden; padding: 0; background: #050507; animation: image-viewer-fade .2s ease both; }
+.image-viewer-dialog { position: relative; display: grid; width: 100%; height: 100%; min-width: 0; place-items: center; overflow: hidden; background: radial-gradient(ellipse at center, #17151c 0%, #08080a 72%); }
+.image-viewer-image { display: block; width: 100%; height: 100%; max-width: 100vw; max-height: 100vh; max-height: 100dvh; border: 0; border-radius: 0; background: transparent; object-fit: contain; user-select: none; -webkit-user-drag: none; }
+.image-viewer-close { position: absolute; z-index: 1; top: max(14px, calc(env(safe-area-inset-top) + 10px)); right: max(14px, calc(env(safe-area-inset-right) + 10px)); width: 46px; height: 46px; border: 1px solid rgba(255,255,255,.2); border-radius: 50%; background: rgba(18,17,22,.78); color: #f3eff8; box-shadow: 0 8px 28px rgba(0,0,0,.35); backdrop-filter: blur(14px); }
 .image-viewer-close:hover { border-color: rgba(199,183,255,.55); background: rgba(45,40,54,.95); }
-.image-viewer-hint { position: absolute; bottom: 5px; color: #aaa4b1; font-size: 10px; text-align: center; }
+.image-viewer-hint { position: absolute; bottom: max(14px, calc(env(safe-area-inset-bottom) + 10px)); max-width: calc(100vw - 32px); padding: 7px 11px; border: 1px solid rgba(255,255,255,.1); border-radius: 999px; background: rgba(15,14,18,.68); color: #c2bdca; font-size: 10px; line-height: 1.35; text-align: center; backdrop-filter: blur(12px); }
 .message-attachment { display: inline-flex; align-items: center; gap: 5px; margin-top: 6px; color: #aaa4b3; font-size: 10px; }
 .message-actions { display: flex; gap: 2px; margin-top: 4px; }
 .message-actions .icon-button { display: inline-flex; width: auto; height: 27px; align-items: center; gap: 5px; padding: 0 7px; font-size: 9px; }
@@ -450,6 +450,7 @@ button:disabled { cursor: not-allowed; }
 
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes float-in { from { transform: translateY(5px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+@keyframes image-viewer-fade { from { opacity: 0; } to { opacity: 1; } }
 
 @media (min-width: 1020px) { .topbar-new-chat { display: inline-flex; } }
 
@@ -499,9 +500,8 @@ button:disabled { cursor: not-allowed; }
   .msg .bubble, .markdown-content pre, .markdown-content table { max-width: 100%; }
   .message-content.has-generated-image { width: auto; max-width: calc(100% - 34px); }
   .gen { width: 100%; max-width: 100%; max-height: min(78dvh, 780px); }
-  .image-viewer-overlay { padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left)); }
-  .image-viewer-close { top: 8px; right: 8px; }
-  .image-viewer-hint { bottom: 4px; max-width: calc(100% - 64px); font-size: 9px; }
+  .image-viewer-close { top: max(12px, calc(env(safe-area-inset-top) + 8px)); right: max(12px, calc(env(safe-area-inset-right) + 8px)); width: 44px; height: 44px; }
+  .image-viewer-hint { bottom: max(12px, calc(env(safe-area-inset-bottom) + 8px)); max-width: calc(100vw - 24px); font-size: 9px; }
   .message-actions .icon-button { min-height: 32px; }
   .composer-zone { padding: 0 max(10px, env(safe-area-inset-right)) max(10px,env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left)); }
   .composer { width: 100%; }
