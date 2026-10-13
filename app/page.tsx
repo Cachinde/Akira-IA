@@ -7,6 +7,7 @@ import {
   Copy,
   ChevronDown,
   Clock3,
+  Download,
   FileDown,
   Globe,
   ImagePlus,
@@ -17,12 +18,15 @@ import {
   MessageSquarePlus,
   MoreHorizontal,
   Paperclip,
+  Pencil,
   Search,
   Send,
   Share2,
   Sparkles,
   SquarePen,
   Trash2,
+  ThumbsDown,
+  ThumbsUp,
   X,
 } from "lucide-react";
 import { ChangeEvent, FormEvent, KeyboardEvent, useEffect, useRef, useState } from "react";
@@ -52,6 +56,7 @@ class UsageLimitError extends Error {
   constructor(
     readonly metric: "messages" | "images",
     message: string,
+    readonly retryAt: string | null,
   ) {
     super(message);
   }
@@ -83,6 +88,18 @@ function formatTime(value?: string) {
   return new Intl.DateTimeFormat("pt", { hour: "2-digit", minute: "2-digit" }).format(new Date(value));
 }
 
+function formatCountdown(retryAt: string, now: number) {
+  const remaining = Date.parse(retryAt) - now;
+  if (!Number.isFinite(remaining) || remaining <= 0) return "00:00:00";
+  const totalSeconds = Math.ceil(remaining / 1000);
+  const days = Math.floor(totalSeconds / 86_400);
+  const hours = Math.floor((totalSeconds % 86_400) / 3_600);
+  const minutes = Math.floor((totalSeconds % 3_600) / 60);
+  const seconds = totalSeconds % 60;
+  const clock = [hours, minutes, seconds].map((part) => String(part).padStart(2, "0")).join(":");
+  return days ? `${days}d ${clock}` : clock;
+}
+
 function responseError(data: unknown, fallback: string) {
   if (data && typeof data === "object" && "error" in data && typeof data.error === "string") {
     return data.error;
@@ -104,7 +121,8 @@ async function readJson(response: Response) {
       "metric" in data &&
       (data.metric === "messages" || data.metric === "images")
     ) {
-      throw new UsageLimitError(data.metric, responseError(data, "Atingiste o limite de utilização do teu plano."));
+      const retryAt = "retryAt" in data && typeof data.retryAt === "string" ? data.retryAt : null;
+      throw new UsageLimitError(data.metric, responseError(data, "Atingiste o limite de utilização do teu plano."), retryAt);
     }
     throw new Error(responseError(data, "O pedido à AKIRA não foi concluído."));
   }
@@ -138,9 +156,12 @@ export default function Page() {
   const [status, setStatus] = useState("");
   const [statusKind, setStatusKind] = useState<"error" | "success" | "">("");
   const [quotaNotice, setQuotaNotice] = useState<UsageLimitError | null>(null);
+  const [countdownNow, setCountdownNow] = useState(Date.now());
   const [imageStyle, setImageStyle] = useState(STYLES[0]);
+  const [editTarget, setEditTarget] = useState<{ messageId: string; image: string } | null>(null);
   const [attachment, setAttachment] = useState<{ name: string; dataUrl?: string; text?: string } | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [feedbackBusyId, setFeedbackBusyId] = useState<string | null>(null);
   const [authSnapshot, setAuthSnapshot] = useState<AuthSnapshot | null>(null);
   const [authReady, setAuthReady] = useState(false);
   const [authMode, setAuthMode] = useState<AuthMode>(null);
@@ -162,7 +183,7 @@ export default function Page() {
 
   const activeChat = chats.find((chat) => chat.id === activeId) || null;
   const messages = activeChat?.messages || [];
-  const messageCharacterLimit = imgMode ? IMAGE_GENERATION_CHARACTER_LIMIT : CHAT_MESSAGE_CHARACTER_LIMIT;
+  const messageCharacterLimit = imgMode || editTarget ? IMAGE_GENERATION_CHARACTER_LIMIT : CHAT_MESSAGE_CHARACTER_LIMIT;
   const messageExceedsLimit = input.length > messageCharacterLimit;
   const displayName = authSnapshot?.displayName?.trim() || "";
   const query = search.trim().toLocaleLowerCase("pt");
@@ -323,12 +344,18 @@ export default function Page() {
   }, [activeId, messages.length, busy]);
 
   useEffect(() => {
-    if (!busy || slowRequest || activityMessages.length < 2) return;
+    if (!busy || activityMessages.length < 2 || activityIndex >= activityMessages.length - 1) return;
     const timer = setInterval(() => {
-      setActivityIndex((current) => (current + 1) % activityMessages.length);
+      setActivityIndex((current) => Math.min(current + 1, activityMessages.length - 1));
     }, 2400);
     return () => clearInterval(timer);
-  }, [activityMessages.length, busy, slowRequest]);
+  }, [activityIndex, activityMessages.length, busy]);
+
+  useEffect(() => {
+    if (!quotaNotice?.retryAt) return;
+    const timer = setInterval(() => setCountdownNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [quotaNotice?.retryAt]);
 
   useEffect(() => {
     if (!expandedImage) return;
@@ -388,6 +415,7 @@ export default function Page() {
     setInput("");
     setAttachment(null);
     setImgMode(false);
+    setEditTarget(null);
     setToolsOpen(false);
     setStatus("");
     setStatusKind("");
@@ -397,7 +425,10 @@ export default function Page() {
 
   function removeChat(id: string) {
     setChats((current) => current.filter((chat) => chat.id !== id));
-    if (activeId === id) setActiveId(null);
+    if (activeId === id) {
+      setActiveId(null);
+      setEditTarget(null);
+    }
     setChatMenu(null);
   }
 
@@ -405,6 +436,7 @@ export default function Page() {
     if (!chats.length || !window.confirm("Apagar todas as conversas guardadas neste navegador?")) return;
     setChats([]);
     setActiveId(null);
+    setEditTarget(null);
     setStatus("O histórico foi apagado deste navegador.");
     setStatusKind("success");
   }
@@ -492,7 +524,8 @@ export default function Page() {
   async function send(text?: string) {
     const rawContent = text ?? input;
     const content = rawContent.trim();
-    const characterLimit = imgMode ? IMAGE_GENERATION_CHARACTER_LIMIT : CHAT_MESSAGE_CHARACTER_LIMIT;
+    const imageRequest = imgMode || Boolean(editTarget);
+    const characterLimit = imageRequest ? IMAGE_GENERATION_CHARACTER_LIMIT : CHAT_MESSAGE_CHARACTER_LIMIT;
     if (rawContent.length > characterLimit) {
       if (text !== undefined) setInput(rawContent);
       inputRef.current?.focus();
@@ -508,8 +541,10 @@ export default function Page() {
       setAuthMode("account");
       return;
     }
-    if (imgMode && !content) {
-      setStatus("Escreve uma descrição para a imagem que queres criar.");
+    if (imageRequest && !content) {
+      setStatus(editTarget
+        ? "Descreve as alterações que queres fazer à imagem."
+        : "Escreve uma descrição para a imagem que queres criar.");
       setStatusKind("error");
       return;
     }
@@ -527,27 +562,49 @@ export default function Page() {
       role: message.role,
       content: message.context ? `${message.content}\n\n${message.context}` : message.content,
     }));
-    const visibleContent = imgMode
-      ? `Cria uma imagem: ${content}`
-      : content || (attachment?.text ? `Analisa o ficheiro ${attachment.name}.` : "Descreve esta imagem.");
+    const visibleContent = editTarget
+      ? `Edita a imagem: ${content}`
+      : imgMode
+        ? `Cria uma imagem: ${content}`
+        : content || (attachment?.text ? `Analisa o ficheiro ${attachment.name}.` : "Descreve esta imagem.");
     const userMessage = makeMessage("user", visibleContent, {
-      attachment: attachment?.dataUrl,
-      attachmentName: attachment?.name,
+      attachment: editTarget?.image || attachment?.dataUrl,
+      attachmentName: editTarget ? "Imagem original" : attachment?.name,
       context: attachment?.text,
     });
 
     pushMessage(chatId, userMessage);
     setInput("");
     setAttachment(null);
-    const nextActivityMessages = imgMode
-      ? ["A AKIRA está a criar a imagem", "A AKIRA está a dar forma à imagem"]
-      : attachment?.dataUrl
-        ? ["A AKIRA está a analisar a imagem", "A AKIRA está a interpretar os detalhes"]
-        : attachment?.text
-          ? ["A AKIRA está a analisar o ficheiro", "A AKIRA está a preparar o contexto"]
-          : isWebSearchRequest(content)
-            ? ["A AKIRA está a pesquisar na web", "A AKIRA está a organizar a pesquisa", "A AKIRA está a preparar os resultados"]
-            : ["A AKIRA está a pensar", "A AKIRA está a organizar as ideias", "A AKIRA está a preparar a resposta"];
+    const nextActivityMessages = editTarget
+      ? [
+          "A AKIRA está a analisar a imagem original",
+          "A AKIRA está a aplicar as alterações pedidas",
+          "A AKIRA está a finalizar a imagem editada",
+        ]
+      : imgMode
+        ? [
+            "A AKIRA está a preparar a imagem",
+            "A AKIRA está a compor os elementos visuais",
+            "A AKIRA está a gerar a imagem",
+        ]
+        : attachment?.dataUrl
+          ? ["A AKIRA está a analisar a imagem", "A AKIRA está a interpretar os detalhes visuais"]
+          : attachment?.text
+            ? ["A AKIRA está a ler o ficheiro", "A AKIRA está a analisar o conteúdo"]
+            : isWebSearchRequest(content)
+              ? [
+                  "A AKIRA está a pesquisar na web",
+                  "A AKIRA está a reunir e comparar informação",
+                  "A AKIRA está a organizar os resultados da pesquisa",
+                  "A AKIRA está a compor a resposta com a pesquisa",
+                ]
+              : [
+                  "A AKIRA está a analisar o teu pedido",
+                  "A AKIRA está a organizar as ideias",
+                  "A AKIRA está a estruturar a resposta",
+                  "A AKIRA está a compor a resposta",
+                ];
     setActivityMessages(nextActivityMessages);
     setActivityIndex(0);
     setBusy(true);
@@ -558,11 +615,16 @@ export default function Page() {
     setToolsOpen(false);
 
     try {
-      if (imgMode) {
+      if (imageRequest) {
         const response = await fetch("/api/image", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ prompt: content, style: imageStyle, history: previousHistory.slice(-8) }),
+          body: JSON.stringify({
+            ...(editTarget ? { action: "edit", imageB64: editTarget.image } : {}),
+            prompt: content,
+            style: imageStyle,
+            history: previousHistory.slice(-8),
+          }),
           signal: AbortSignal.timeout(15_000),
         });
         const started: unknown = await readJson(response);
@@ -600,13 +662,14 @@ export default function Page() {
         if (!result || typeof result !== "object" || !("image" in result) || typeof result.image !== "string") {
           throw new Error("A AKIRA não devolveu uma imagem válida.");
         }
-        pushMessage(chatId, makeMessage("assistant", "A imagem está pronta.", { image: result.image }));
+        pushMessage(chatId, makeMessage("assistant", editTarget ? "A imagem editada está pronta." : "A imagem está pronta.", { image: result.image }));
         if (!authSnapshot.authenticated) {
           const guestMessagesUsed = authSnapshot.guestMessagesUsed + 1;
           setAuthSnapshot((current) => current ? { ...current, guestMessagesUsed } : current);
           if (guestMessagesUsed >= authSnapshot.guestMessageLimit) setAuthMode("account");
         }
         setImgMode(false);
+        setEditTarget(null);
       } else {
         let chatMessage = content || (attachment?.text ? `Analisa o ficheiro ${attachment.name}.` : "Descreve esta imagem em detalhe.");
         let chatContext = "";
@@ -684,15 +747,15 @@ export default function Page() {
         setAttachment(attachment);
         setQuotaNotice(error);
       } else if (error instanceof DOMException && (error.name === "AbortError" || error.name === "TimeoutError")) {
-        if (imgMode) {
+        if (imageRequest) {
           setInput(content);
-          setStatus("A geração da imagem excedeu o tempo limite. O pedido foi restaurado para poderes tentar novamente.");
+          setStatus("O processamento da imagem excedeu o tempo limite. O pedido foi restaurado para poderes tentar novamente.");
         } else {
           setStatus("A pesquisa demorou mais de ~2 min — a Space ainda estava a pesquisar. Tenta de novo.");
         }
         setStatusKind("error");
       } else {
-        if (imgMode) setInput(content);
+        if (imageRequest) setInput(content);
         setStatus(error instanceof Error ? error.message : "O pedido à AKIRA falhou.");
         setStatusKind("error");
       }
@@ -762,6 +825,7 @@ export default function Page() {
   function chooseSuggestion(text: string) {
     if (!text) {
       setAttachment(null);
+      setEditTarget(null);
       setImgMode(true);
       setToolsOpen(false);
       inputRef.current?.focus();
@@ -782,6 +846,70 @@ export default function Page() {
     }
   }
 
+  function editImage(message: Msg) {
+    if (!message.image) return;
+    setImgMode(false);
+    setAttachment(null);
+    setInput("");
+    setEditTarget({ messageId: message.id, image: message.image });
+    setStatus("");
+    setStatusKind("");
+    inputRef.current?.focus();
+  }
+
+  function downloadImage(message: Msg) {
+    if (!message.image) return;
+    const extension = /^data:image\/(png|jpeg|jpg|webp);/i.exec(message.image)?.[1].toLowerCase();
+    const link = document.createElement("a");
+    link.href = message.image;
+    link.download = `akira-imagem-${message.id.slice(0, 8)}.${extension === "jpeg" ? "jpg" : extension || "png"}`;
+    link.click();
+  }
+
+  async function rateMessage(message: Msg, rating: "positive" | "negative") {
+    if (feedbackBusyId) return;
+    const messageIndex = messages.findIndex((item) => item.id === message.id);
+    const prompt = messageIndex > 0
+      ? [...messages.slice(0, messageIndex)].reverse().find((item) => item.role === "user")?.content
+      : undefined;
+    if (!prompt) {
+      setStatus("Não foi possível associar o feedback à pergunta original.");
+      setStatusKind("error");
+      return;
+    }
+
+    setFeedbackBusyId(message.id);
+    try {
+      const response = await fetch("/api/feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messageId: message.id, rating, prompt, response: message.content }),
+      });
+      const result = await readJson(response);
+      if (
+        !result ||
+        typeof result !== "object" ||
+        !("includedInTraining" in result) ||
+        result.includedInTraining !== (rating === "positive")
+      ) {
+        throw new Error("A AKIRA não confirmou a gravação do feedback.");
+      }
+      setChats((current) => current.map((chat) => ({
+        ...chat,
+        messages: chat.messages.map((item) => item.id === message.id ? { ...item, feedback: rating } : item),
+      })));
+      setStatus(rating === "positive"
+        ? "Obrigado. O 👍 foi guardado na AKIRA e entrou no conjunto considerado nos próximos ciclos de treino; a execução depende do agendamento e do mínimo de exemplos."
+        : "Obrigado. O 👎 foi guardado para revisão e não entra no conjunto de treino.");
+      setStatusKind("success");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Não foi possível guardar o feedback.");
+      setStatusKind("error");
+    } finally {
+      setFeedbackBusyId(null);
+    }
+  }
+
   async function shareMessage(message: Msg) {
     try {
       const messageIndex = messages.findIndex((item) => item.id === message.id);
@@ -791,14 +919,16 @@ export default function Page() {
       const response = await fetch("/api/share", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content: message.content, question }),
+        body: JSON.stringify({ content: message.content, question, ...(message.image ? { image: message.image } : {}) }),
       });
       const result = await readJson(response);
       if (!result || typeof result !== "object" || !("url" in result) || typeof result.url !== "string") {
         throw new Error("Não foi possível criar o link da resposta.");
       }
       await navigator.clipboard.writeText(result.url);
-      setStatus("Link da conversa copiado. Inclui a mensagem original e a resposta da AKIRA.");
+      setStatus(message.image
+        ? "Link copiado. Inclui a pergunta, a resposta e a imagem da AKIRA."
+        : "Link da conversa copiado. Inclui a mensagem original e a resposta da AKIRA.");
       setStatusKind("success");
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Não foi possível partilhar a resposta.");
@@ -854,7 +984,7 @@ export default function Page() {
             <div className={`history-entry ${activeId === chat.id ? "active" : ""}`} key={chat.id}>
               <button
                 className="hist-item"
-                onClick={() => { setActiveId(chat.id); setSideOpen(false); setStatus(""); setStatusKind(""); }}
+                onClick={() => { setActiveId(chat.id); setEditTarget(null); setSideOpen(false); setStatus(""); setStatusKind(""); }}
                 title={chat.title}
               >
                 <span className="history-item-title">{chat.title}</span>
@@ -1041,6 +1171,40 @@ export default function Page() {
                           <Share2 size={14} /><span>Partilhar</span>
                         </button>
                       )}
+                      {message.image && (
+                        <>
+                          <button className="icon-button" onClick={() => editImage(message)} disabled={busy} aria-label="Editar imagem com um pedido" title="Editar imagem">
+                            <Pencil size={14} /><span>Editar</span>
+                          </button>
+                          <button className="icon-button" onClick={() => downloadImage(message)} aria-label="Descarregar imagem" title="Descarregar imagem">
+                            <Download size={14} /><span>Descarregar</span>
+                          </button>
+                        </>
+                      )}
+                      {message.role === "assistant" && !message.image && (
+                        <>
+                          <button
+                            className={`icon-button feedback-button ${message.feedback === "positive" ? "selected" : ""}`}
+                            onClick={() => void rateMessage(message, "positive")}
+                            disabled={feedbackBusyId === message.id}
+                            aria-label="Marcar resposta útil; a pergunta e resposta serão guardadas para revisão de qualidade"
+                            aria-pressed={message.feedback === "positive"}
+                            title={message.feedback === "positive" ? "Feedback positivo enviado" : "Resposta útil; o par pergunta/resposta será guardado para revisão"}
+                          >
+                            <ThumbsUp size={14} />
+                          </button>
+                          <button
+                            className={`icon-button feedback-button ${message.feedback === "negative" ? "selected" : ""}`}
+                            onClick={() => void rateMessage(message, "negative")}
+                            disabled={feedbackBusyId === message.id}
+                            aria-label="Marcar resposta não útil; a pergunta e resposta serão guardadas para revisão de qualidade"
+                            aria-pressed={message.feedback === "negative"}
+                            title={message.feedback === "negative" ? "Feedback negativo enviado" : "Resposta não útil; o par pergunta/resposta será guardado para revisão"}
+                          >
+                            <ThumbsDown size={14} />
+                          </button>
+                        </>
+                      )}
                     </div>
                     <time className="message-time">{formatTime(message.createdAt)}</time>
                   </div>
@@ -1051,10 +1215,11 @@ export default function Page() {
                   <div className="assistant-mark"><Logo size={24} /></div>
                   <div className="typing" aria-live="polite">
                     <LoaderCircle size={15} className="spin" aria-hidden="true" />
-                    <span>{slowRequest
-                      ? "A resposta está a demorar; se a AKIRA estava inativa, pode estar a arrancar. Mantém esta página aberta."
-                      : activityMessages[activityIndex]}</span>
-                    {!slowRequest && <span className="typing-dots" aria-hidden="true"><i /><i /><i /></span>}
+                    <span>{activityMessages[activityIndex]}</span>
+                    <span className="typing-dots" aria-hidden="true"><i /><i /><i /></span>
+                    {slowRequest && (
+                      <span className="typing-note">O pedido está a demorar. Mantém esta página aberta; a AKIRA continua a processá-lo.</span>
+                    )}
                   </div>
                 </div>
               )}
@@ -1080,23 +1245,31 @@ export default function Page() {
               </button>
             </div>
           )}
-          {imgMode && (
+          {(imgMode || editTarget) && (
             <div className="image-mode-bar">
-              <span><ImagePlus size={14} /> Criar imagem</span>
-              <label>
-                Estilo
-                <select value={imageStyle} onChange={(event) => setImageStyle(event.target.value)}>
-                  {STYLES.map((style) => <option key={style}>{style}</option>)}
-                </select>
-                <ChevronDown size={13} />
-              </label>
-              <button className="icon-button" onClick={() => setImgMode(false)} aria-label="Fechar modo de imagem"><X size={14} /></button>
+              <span>{editTarget ? <Pencil size={14} /> : <ImagePlus size={14} />} {editTarget ? "Editar imagem" : "Criar imagem"}</span>
+              {imgMode && (
+                <label>
+                  Estilo
+                  <select value={imageStyle} onChange={(event) => setImageStyle(event.target.value)}>
+                    {STYLES.map((style) => <option key={style}>{style}</option>)}
+                  </select>
+                  <ChevronDown size={13} />
+                </label>
+              )}
+              <button
+                className="icon-button"
+                onClick={() => { setImgMode(false); setEditTarget(null); setInput(""); }}
+                aria-label="Fechar modo de imagem"
+              >
+                <X size={14} />
+              </button>
             </div>
           )}
           {toolsOpen && (
             <div className="tools-pop">
               <div className="tools-heading">Ferramentas</div>
-              <button onClick={() => { setAttachment(null); setImgMode(true); setToolsOpen(false); inputRef.current?.focus(); }}>
+              <button onClick={() => { setAttachment(null); setEditTarget(null); setImgMode(true); setToolsOpen(false); inputRef.current?.focus(); }}>
                 <span className="tool-icon"><ImagePlus size={16} /></span>
                 <span><strong>Criar uma imagem</strong><small>Ilustra uma ideia à tua maneira</small></span>
                 {imgMode && <Check className="tool-check" size={15} />}
@@ -1119,7 +1292,7 @@ export default function Page() {
             <textarea
               ref={inputRef}
               rows={1}
-              placeholder={imgMode ? "Descreve a imagem que tens em mente…" : "Escreve a tua mensagem…"}
+              placeholder={editTarget ? "Descreve as alterações a fazer à imagem…" : imgMode ? "Descreve a imagem que tens em mente…" : "Escreve a tua mensagem…"}
               value={input}
               disabled={!historyReady || busy}
               onChange={(event) => setInput(event.target.value)}
@@ -1220,6 +1393,11 @@ export default function Page() {
            <span className="quota-eyebrow">LIMITE DO PLANO ATINGIDO</span>
            <h2 id="quota-title">{quotaNotice.metric === "images" ? "Queres criar mais imagens?" : "Continua a conversar com a AKIRA."}</h2>
            <p id="quota-description">{quotaNotice.message}</p>
+           {quotaNotice.retryAt && (
+             <p className="quota-countdown" role="timer">
+               Repõe em <strong>{formatCountdown(quotaNotice.retryAt, countdownNow)}</strong>
+             </p>
+           )}
            <div className="quota-actions">
              <a
                className="quota-upgrade"

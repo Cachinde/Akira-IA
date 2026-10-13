@@ -241,11 +241,15 @@ button:disabled { cursor: not-allowed; }
 .message-attachment { display: inline-flex; align-items: center; gap: 5px; margin-top: 6px; color: #aaa4b3; font-size: 10px; }
 .message-actions { display: flex; gap: 2px; margin-top: 4px; }
 .message-actions .icon-button { display: inline-flex; width: auto; height: 27px; align-items: center; gap: 5px; padding: 0 7px; font-size: 9px; }
+.message-actions .feedback-button { justify-content: center; width: 29px; padding: 0; }
+.message-actions .feedback-button.selected { border-color: rgba(155,225,201,.24); background: rgba(46,103,83,.2); color: #a9dfcb; }
+.message-actions .icon-button:disabled { cursor: wait; opacity: .55; }
 .msg.user .message-actions { justify-content: flex-end; }
 .message-time { margin-top: 5px; color: #716e78; font-size: 9px; }
 .msg.user .message-time { text-align: right; }
-.typing { display: inline-flex; align-items: center; gap: 8px; padding: 7px 0; color: #a19ca9; font-size: 11px; }
+.typing { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 7px 0; color: #a19ca9; font-size: 11px; }
 .typing > span:first-of-type { animation: float-in .24s ease both; }
+.typing-note { flex-basis: 100%; margin: -3px 0 0 23px; color: #77737f; font-size: 10px; line-height: 1.5; }
 .typing-dots { display: inline-flex; align-items: center; gap: 3px; }
 .typing-dots i { width: 3px; height: 3px; border-radius: 50%; background: #c7b7ff; animation: typing-pulse 1.1s ease-in-out infinite; }
 .typing-dots i:nth-child(2) { animation-delay: .16s; }
@@ -341,6 +345,7 @@ button:disabled { cursor: not-allowed; }
 .share-card .markdown-content { color: #dedbe3; font-size: 13px; line-height: 1.8; }
 .share-question { margin-bottom: 17px; padding: 15px 17px; border: 1px solid rgba(255,255,255,.08); border-radius: 12px; background: #222225; }
 .share-answer { padding: 17px; border: 1px solid rgba(199,183,255,.2); border-radius: 12px; background: linear-gradient(145deg,rgba(174,148,255,.07),rgba(255,255,255,.015)); }
+.share-image { display: block; width: 100%; height: auto; max-height: 75vh; margin-top: 16px; border: 1px solid rgba(255,255,255,.1); border-radius: 10px; background: #111113; object-fit: contain; }
 .share-section-label { display: flex; align-items: center; gap: 7px; margin-bottom: 10px; color: #a29ba9; font-size: 9px; font-weight: 700; letter-spacing: .12em; }
 .share-answer .share-section-label { color: #cbbdf4; }
 .share-question .markdown-content > :first-child, .share-answer .markdown-content > :first-child { margin-top: 0; }
@@ -357,6 +362,8 @@ button:disabled { cursor: not-allowed; }
 .quota-eyebrow { color: #bba8ed; font-size: 9px; font-weight: 700; letter-spacing: .17em; }
 .quota-dialog h2 { max-width: 340px; margin: 10px auto 9px; color: #f1edf5; font-family: "Manrope",sans-serif; font-size: clamp(21px,5vw,26px); font-weight: 600; letter-spacing: -.035em; line-height: 1.3; }
 .quota-dialog p { margin: 0 auto 23px; color: #aaa4b1; font-size: 12px; line-height: 1.7; }
+.quota-dialog .quota-countdown { margin-top: -14px; font-size: 11px; }
+.quota-countdown strong { color: #d4c9f6; font-variant-numeric: tabular-nums; }
 .quota-actions { display: flex; flex-direction: column; gap: 7px; }
 .quota-upgrade { display: inline-flex; min-height: 45px; align-items: center; justify-content: center; gap: 8px; border-radius: 10px; background: linear-gradient(110deg,#d5c8ff,#bba5f2); color: #241e31; font-size: 11px; font-weight: 700; text-decoration: none; transition: filter .16s ease,transform .16s ease; }
 .quota-upgrade:hover { transform: translateY(-1px); filter: brightness(1.06); }

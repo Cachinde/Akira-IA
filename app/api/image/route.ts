@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { apiImage, apiDescribe } from "@/lib/space";
+import { apiImage, apiDescribe, apiEditImage } from "@/lib/space";
 import {
   consumeImageUsage,
   consumeUsage,
@@ -76,7 +76,8 @@ export async function POST(req: NextRequest) {
 
   const input = body as Record<string, unknown>;
   try {
-    if (typeof input.imageB64 === "string") {
+    const editingImage = input.action === "edit";
+    if (typeof input.imageB64 === "string" && !editingImage) {
       if (!input.imageB64.startsWith("data:image/") || input.imageB64.length > 11_000_000) {
         return NextResponse.json({ error: "Anexa uma imagem válida com menos de 8 MB." }, { status: 413 });
       }
@@ -106,6 +107,13 @@ export async function POST(req: NextRequest) {
     if (!prompt) return NextResponse.json({ error: "Escreve uma descrição para a imagem." }, { status: 400 });
     if (prompt.length > IMAGE_GENERATION_CHARACTER_LIMIT) {
       return NextResponse.json({ error: "A descrição excede o limite de 1.000 caracteres." }, { status: 413 });
+    }
+    const imageToEdit = editingImage && typeof input.imageB64 === "string" ? input.imageB64 : "";
+    if (editingImage && !/^data:image\/(png|jpeg|jpg|webp);base64,[A-Za-z0-9+/]+={0,2}$/i.test(imageToEdit)) {
+      return NextResponse.json({ error: "A imagem de referência para edição é inválida." }, { status: 400 });
+    }
+    if (editingImage && imageToEdit.length > 11_000_000) {
+      return NextResponse.json({ error: "A imagem excede o limite de 8 MB." }, { status: 413 });
     }
 
     const style = typeof input.style === "string" && IMAGE_STYLES.has(input.style)
@@ -138,6 +146,7 @@ export async function POST(req: NextRequest) {
         const response = NextResponse.json({
           code: "quota_exceeded",
           metric: "images",
+          retryAt: usage.retryAt,
           error: `Atingiste o limite diário de ${usage.limit} imagens do plano ${usage.plan}. Tenta novamente amanhã ou muda de plano.`,
         }, { status: 429 });
         if (identity.created) setUserCookie(response, identity.userId);
@@ -146,6 +155,7 @@ export async function POST(req: NextRequest) {
       const response = NextResponse.json({
         ...(usage.requiresAccount ? { code: "account_required" } : {}),
         ...(!usage.requiresAccount ? { code: "quota_exceeded", metric: "messages" } : {}),
+        ...(usage.retryAt ? { retryAt: usage.retryAt } : {}),
         error: usage.requiresAccount
           ? "As dez mensagens grátis terminaram. Cria a tua conta gratuita para continuares."
           : `Atingiste o limite de ${usage.limit} mensagens do plano ${usage.plan}.`,
@@ -155,7 +165,10 @@ export async function POST(req: NextRequest) {
     }
 
     const jobId = await createImageJob(identity.userId);
-    void apiImage(prompt, style, history)
+    const generation = editingImage
+      ? apiEditImage(prompt, imageToEdit)
+      : apiImage(prompt, style, history);
+    void generation
       .then((result) => {
         return updateImageJob(jobId, { status: "complete", result });
       })

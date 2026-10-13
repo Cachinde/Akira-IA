@@ -6,6 +6,7 @@ export type Msg = {
   image?: string;
   attachment?: string;
   attachmentName?: string;
+  feedback?: "positive" | "negative";
   createdAt: string;
 };
 
@@ -76,6 +77,9 @@ function normalizeChat(chat: Chat, index: number): Chat {
       ...(typeof candidate.image === "string" ? { image: candidate.image } : {}),
       ...(typeof candidate.attachment === "string" ? { attachment: candidate.attachment } : {}),
       ...(typeof candidate.attachmentName === "string" ? { attachmentName: candidate.attachmentName } : {}),
+      ...(candidate.feedback === "positive" || candidate.feedback === "negative"
+        ? { feedback: candidate.feedback }
+        : {}),
     };
   });
   const lastMessage = messages[messages.length - 1];

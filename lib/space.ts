@@ -260,6 +260,67 @@ export async function apiImage(
   };
 }
 
+export async function apiEditImage(prompt: string, imageB64: string): Promise<ImageResult> {
+  const apiSecret = process.env.AKIRA_IMAGE_EDIT_SECRET?.trim();
+  if (!apiSecret || apiSecret.length < 32) {
+    throw new Error("A edição de imagens requer AKIRA_IMAGE_EDIT_SECRET com pelo menos 32 caracteres no servidor.");
+  }
+  const client = await imageSpaceClient();
+  const result = await client.predict("/edit_image", [prompt, imageB64, apiSecret]);
+  const output = objectOutput<ImagePayload>(result.data, "edição de imagem");
+  const image = await normalizeImageValue(output.image ?? output);
+
+  if (!image) {
+    const outputKeys = Object.keys(output).join(", ") || "nenhum";
+    console.error("A resposta da Space não contém a imagem editada.", {
+      outputKeys,
+      imageType: typeof output.image,
+    });
+    throw new Error(
+      typeof output.info === "string" && output.info
+        ? `A AKIRA não conseguiu editar a imagem: ${output.info}`
+        : `A Space terminou a edição, mas não devolveu uma imagem reconhecível (campos: ${outputKeys}).`,
+    );
+  }
+
+  return {
+    image,
+    info: typeof output.info === "string" ? output.info : "Imagem editada",
+  };
+}
+
+export async function apiBotUiFeedback(
+  feedbackId: string,
+  rating: "positive" | "negative",
+  prompt: string,
+  response: string,
+): Promise<{ includedInTraining: boolean }> {
+  const apiSecret = process.env.AKIRA_FEEDBACK_SECRET?.trim();
+  if (!apiSecret || apiSecret.length < 32) {
+    throw new Error("O feedback requer AKIRA_FEEDBACK_SECRET com pelo menos 32 caracteres no servidor.");
+  }
+  const client = await chatSpaceClient();
+  const result = await client.predict("/bot_ui_feedback", [
+    feedbackId,
+    rating,
+    prompt,
+    response,
+    apiSecret,
+  ]);
+  const output = objectOutput<{ saved?: unknown; included_in_training?: unknown; error?: unknown }>(
+    result.data,
+    "feedback",
+  );
+  if (output.saved !== true) {
+    throw new Error(
+      typeof output.error === "string" && output.error
+        ? `A AKIRA não conseguiu guardar o feedback: ${output.error}`
+        : "A AKIRA não confirmou a gravação do feedback.",
+    );
+  }
+  return { includedInTraining: output.included_in_training === true };
+}
+
 export async function apiDescribe(imageB64: string, prompt?: string): Promise<string> {
   const client = await imageSpaceClient();
   const result = await client.predict("/describe_image", [

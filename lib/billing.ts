@@ -120,6 +120,18 @@ export async function ensureBillingSchema(): Promise<void> {
         );
         CREATE INDEX IF NOT EXISTS akira_image_jobs_updated_at
           ON akira_image_jobs (updated_at);
+        CREATE TABLE IF NOT EXISTS akira_message_feedback (
+          user_id UUID NOT NULL REFERENCES akira_billing_accounts(user_id) ON DELETE CASCADE,
+          message_id UUID NOT NULL,
+          rating TEXT NOT NULL CHECK (rating IN ('positive', 'negative')),
+          prompt TEXT NOT NULL,
+          response TEXT NOT NULL,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          PRIMARY KEY (user_id, message_id)
+        );
+        CREATE INDEX IF NOT EXISTS akira_message_feedback_created_at
+          ON akira_message_feedback (created_at);
       `);
     })().catch((error: unknown) => {
       globalForBilling.akiraBillingSchema = undefined;
@@ -228,6 +240,45 @@ function currentImagePeriod(): string {
   return new Date(Date.now() + 60 * 60 * 1000).toISOString().slice(0, 10);
 }
 
+function periodResetAt(period: "day" | "month"): string {
+  const now = new Date();
+  const reset = period === "day"
+    ? new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1))
+    : new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+  return reset.toISOString();
+}
+
+function imagePeriodResetAt(): string {
+  const localNow = new Date(Date.now() + 60 * 60 * 1000);
+  return new Date(
+    Date.UTC(localNow.getUTCFullYear(), localNow.getUTCMonth(), localNow.getUTCDate() + 1) - 60 * 60 * 1000,
+  ).toISOString();
+}
+
+export async function saveMessageFeedback(
+  userId: string,
+  messageId: string,
+  rating: "positive" | "negative",
+  prompt: string,
+  response: string,
+): Promise<void> {
+  await ensureBillingSchema();
+  await billingPool().query(
+    "INSERT INTO akira_billing_accounts (user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING",
+    [userId],
+  );
+  await billingPool().query(
+    `INSERT INTO akira_message_feedback (user_id, message_id, rating, prompt, response)
+     VALUES ($1, $2, $3, $4, $5)
+     ON CONFLICT (user_id, message_id) DO UPDATE SET
+       rating = EXCLUDED.rating,
+       prompt = EXCLUDED.prompt,
+       response = EXCLUDED.response,
+       updated_at = NOW()`,
+    [userId, messageId, rating, prompt, response],
+  );
+}
+
 async function activePlan(client: PoolClient, userId: string): Promise<PlanId> {
   await client.query("INSERT INTO akira_billing_accounts (user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING", [userId]);
   const result = await client.query<{ plan: PlanId; subscription_status: string; email: string | null; display_name: string | null }>(
@@ -328,7 +379,18 @@ export async function consumeUsage(userId: string, metric: "messages" | "files" 
     );
     if (!updated.rowCount) {
       await client.query("COMMIT");
-      return { allowed: false as const, plan, limit, requiresAccount: metric === "messages" && isGuest, requiresProfile: false };
+      return {
+        allowed: false as const,
+        plan,
+        limit,
+        requiresAccount: metric === "messages" && isGuest,
+        requiresProfile: false,
+        retryAt: metric === "messages" && isGuest
+          ? null
+          : metric === "images"
+            ? imagePeriodResetAt()
+            : periodResetAt(limits.period),
+      };
     }
     await client.query("COMMIT");
     return { allowed: true as const, plan, limit, requiresAccount: false, requiresProfile: false };
@@ -385,6 +447,11 @@ export async function consumeImageUsage(userId: string) {
           requiresAccount: usageMetric.metric === "messages" && isGuest,
           requiresProfile: false,
           metric: usageMetric.metric,
+          retryAt: usageMetric.metric === "images"
+            ? imagePeriodResetAt()
+            : isGuest
+              ? null
+              : periodResetAt(limits.period),
         };
       }
     }
@@ -522,15 +589,17 @@ export async function applyStripeEvent(event: Record<string, unknown>): Promise<
 export type SharedMessage = {
   question: string | null;
   answer: string;
+  image: string | null;
 };
 
-export async function createSharedMessage(answer: string, question?: string): Promise<string> {
+export async function createSharedMessage(answer: string, question?: string, image?: string): Promise<string> {
   await ensureBillingSchema();
   const id = randomUUID();
   const content = JSON.stringify({
-    version: 1,
+    version: image ? 2 : 1,
     question: question?.trim() || null,
     answer,
+    ...(image ? { image } : {}),
   });
   await billingPool().query("DELETE FROM akira_shared_messages WHERE expires_at <= NOW()");
   await billingPool().query(
@@ -552,21 +621,27 @@ export async function loadSharedMessage(id: string): Promise<SharedMessage | nul
 
   try {
     const parsed: unknown = JSON.parse(content);
+    const share = parsed && typeof parsed === "object"
+      ? parsed as { version?: unknown; answer?: unknown; question?: unknown; image?: unknown }
+      : null;
     if (
-      parsed &&
-      typeof parsed === "object" &&
-      "version" in parsed &&
-      parsed.version === 1 &&
-      "answer" in parsed &&
-      typeof parsed.answer === "string" &&
-      "question" in parsed &&
-      (typeof parsed.question === "string" || parsed.question === null)
+      share &&
+      (share.version === 1 || share.version === 2) &&
+      typeof share.answer === "string" &&
+      (typeof share.question === "string" || share.question === null) &&
+      (share.version === 1 || (
+        typeof share.image === "string" || share.image === null
+      ))
     ) {
-      return { question: parsed.question, answer: parsed.answer };
+      return {
+        question: share.question,
+        answer: share.answer,
+        image: share.version === 2 && typeof share.image === "string" ? share.image : null,
+      };
     }
   } catch {
     // Existing share rows contain the answer as plain text.
   }
 
-  return { question: null, answer: content };
+  return { question: null, answer: content, image: null };
 }

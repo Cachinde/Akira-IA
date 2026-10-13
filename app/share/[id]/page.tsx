@@ -20,7 +20,9 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const siteUrl = getPublicSiteUrl();
   const pageUrl = new URL(`/share/${encodeURIComponent(id)}`, siteUrl).toString();
   const description = [content.question, content.answer].filter(Boolean).join(" — ").replace(/\s+/g, " ").slice(0, 180);
-  const image = new URL("/akira-share-v2.png", siteUrl).toString();
+  const image = content.image
+    ? new URL(`/api/share/${encodeURIComponent(id)}/image`, siteUrl).toString()
+    : new URL("/akira-share-v2.png", siteUrl).toString();
   return {
     title: "Resposta partilhada",
     description,
@@ -31,14 +33,15 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       url: pageUrl,
       title: "Uma resposta da AKIRA",
       description,
-      images: [{ url: image, width: 1200, height: 630, alt: "AKIRA — Assistente inteligente" }],
+      images: [{ url: image, ...(content.image ? {} : { width: 1200, height: 630 }), alt: content.image ? "Imagem partilhada da AKIRA" : "AKIRA — Assistente inteligente" }],
     },
     twitter: { card: "summary_large_image", title: "Uma resposta da AKIRA", description, images: [image] },
   };
 }
 
 export default async function SharedMessagePage({ params }: Props) {
-  const content = await sharedContent(params);
+  const { id } = await params;
+  const content = await loadSharedMessage(id);
   return (
     <main className="share-page">
       <header className="share-header">
@@ -58,6 +61,15 @@ export default async function SharedMessagePage({ params }: Props) {
             <section className="share-answer">
               <div className="share-section-label"><Logo size={20} /> RESPOSTA DA AKIRA</div>
               <div className="markdown-content"><ReactMarkdown remarkPlugins={[remarkGfm]}>{content.answer}</ReactMarkdown></div>
+              {content.image && (
+                <img
+                  className="share-image"
+                  src={`/api/share/${encodeURIComponent(id)}/image`}
+                  alt="Imagem partilhada da AKIRA"
+                  loading="eager"
+                  decoding="async"
+                />
+              )}
             </section>
           </>
         ) : (

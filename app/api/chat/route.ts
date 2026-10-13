@@ -67,6 +67,7 @@ export async function POST(req: NextRequest) {
         {
           ...(usage.requiresAccount ? { code: "account_required" } : {}),
           ...(!usage.requiresAccount ? { code: "quota_exceeded", metric: "messages" } : {}),
+          ...(usage.retryAt ? { retryAt: usage.retryAt } : {}),
           error: usage.requiresAccount
             ? "As dez mensagens grátis terminaram. Cria a tua conta gratuita para continuares."
             : `Atingiste o limite de ${usage.limit} mensagens do plano ${usage.plan}.`,

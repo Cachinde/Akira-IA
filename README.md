@@ -1,6 +1,6 @@
 # AKIRA UI
 
-Interface em Next.js para conversar com o Space público `akra35567/AKIRA-SOFTEDGE`, que atende o chat e a geração/análise de imagens. Inclui histórico no browser, pesquisa na web, análise de imagens e geração de imagens.
+Interface em Next.js para conversar com o Space público `akra35567/AKIRA-SOFTEDGE`, que atende o chat e a geração/análise/edição de imagens. Inclui histórico no browser, pesquisa na web, download de imagens e feedback de respostas.
 
 ## Executar localmente
 
@@ -20,9 +20,15 @@ O chat e as imagens ligam-se ao Space Gradio `akra35567/AKIRA-SOFTEDGE`. A URL `
 
 - `/_send` (AKIRA-SOFTEDGE) — resposta de conversa, com o histórico anterior da sessão.
 - `/generate_image` (AKIRA-SOFTEDGE) — geração de imagem com prompt, estilo e contexto recente da conversa.
+- `/edit_image` (AKIRA-SOFTEDGE) — edição da imagem de referência por prompt; requer `AKIRA_IMAGE_EDIT_SECRET` igual nos dois serviços.
+- `/bot_ui_feedback` (AKIRA-SOFTEDGE) — recebe as reações do bot_ui; requer `AKIRA_FEEDBACK_SECRET` igual nos dois serviços.
 - `/describe_image` — análise de uma imagem codificada em base64.
 
-As rotas Next `/api/chat` e `/api/image` fazem as chamadas no servidor para não expor o token Hugging Face ao browser. Por padrão, ambas usam `akra35567/AKIRA-SOFTEDGE`; `AKIRA_CHAT_SPACE_ID` e `HF_SPACE_ID` podem ser configurados explicitamente. Erros do Space são devolvidos como erros HTTP explícitos, em vez de mensagens com aparência de sucesso.
+As rotas Next `/api/chat`, `/api/image` e `/api/feedback` fazem as chamadas no servidor para não expor credenciais ao browser. Por padrão, chat e imagens usam `akra35567/AKIRA-SOFTEDGE`; `AKIRA_CHAT_SPACE_ID` e `HF_SPACE_ID` podem ser configurados explicitamente. Erros do Space são devolvidos como erros HTTP explícitos, em vez de mensagens com aparência de sucesso. A edição envia a imagem original ao Space, consome a quota de imagens e guarda o resultado como uma nova mensagem; a geração do zero continua disponível separadamente.
+
+As reações 👍/👎 são guardadas tanto no PostgreSQL do bot_ui como na base da AKIRA-SOFTEDGE. Apenas respostas com 👍 são adicionadas à tabela `mensagens`, que é a fonte de `prepare_dataset()` nos ciclos periódicos de treino; 👎 fica registado para análise e não entra no dataset. A identidade estável do feedback torna os reenvios idempotentes. Se a reação passar de 👍 para 👎, o exemplo é removido de `mensagens` para os próximos ciclos (um modelo já treinado não é revertido). O treino continua sujeito ao agendamento ativo e ao mínimo de exemplos exigido pelo trainer. A votação aplica-se a respostas de texto, não a imagens.
+
+Para ativar a integração, configura o mesmo segredo aleatório com pelo menos 32 caracteres em `AKIRA_FEEDBACK_SECRET` no serviço bot_ui (Render) e nos secrets do Space `AKIRA-SOFTEDGE`. O segredo é enviado apenas do backend do bot_ui para o Space; não o coloques em variáveis `NEXT_PUBLIC_*`.
 
 A geração de imagens no Space `akra35567/AKIRA-SOFTEDGE` tenta primeiro FLUX.1-dev através da Hugging Face Inference. Pollinations só é usado quando os tokens HF configurados atingem a quota (HTTP 402/429); erros de configuração, autenticação ou acesso ao modelo são devolvidos em vez de mascarados pelo fallback. Os tokens para inferência devem estar nas Variables and secrets do Space `AKIRA-SOFTEDGE`; o `HF_TOKEN` desta UI serve para a UI aceder ao Space e não substitui os secrets de inferência do backend.
 
@@ -54,6 +60,8 @@ Define as variáveis no **Render Dashboard → AKIRA Web Service → Environment
 | `AKIRA_CHAT_SPACE_ID` | `akra35567/AKIRA-SOFTEDGE` (predefinido) | Respostas do chat |
 | `HF_SPACE_ID` | `akra35567/AKIRA-SOFTEDGE` (predefinido) | Geração e análise de imagens |
 | `HF_TOKEN` | Token pessoal Hugging Face; deixa vazio se os Spaces públicos funcionarem sem autenticação | Opcional; acesso/quota dos Spaces |
+| `AKIRA_IMAGE_EDIT_SECRET` | Segredo aleatório com pelo menos 32 caracteres; mesmo valor em Render e nos secrets do Space `AKIRA-SOFTEDGE` | Autorizar edição de imagens através do backend |
+| `AKIRA_FEEDBACK_SECRET` | Segredo aleatório com pelo menos 32 caracteres; mesmo valor em Render e nos secrets do Space `AKIRA-SOFTEDGE` | Autorizar a gravação privada das reações e exemplos positivos |
 | `NEXT_PUBLIC_SITE_URL` | `https://akira-ia.onrender.com` | URLs públicos, pré-visualizações e partilhas |
 | `DATABASE_URL` | URL **PostgreSQL** da base criada no Render; prefere a ligação interna | Contas, limites, sessão, links e assinaturas |
 | `BILLING_COOKIE_SECRET` | Segredo aleatório, mínimo 32 caracteres; mantém privado | Sessões, OAuth e assinatura do cookie |
