@@ -883,14 +883,20 @@ export default function Page() {
       const response = await fetch("/api/feedback", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messageId: message.id, rating, prompt, response: message.content }),
+        body: JSON.stringify({
+          messageId: message.id,
+          rating,
+          prompt,
+          response: message.content,
+          isImage: Boolean(message.image),
+        }),
       });
       const result = await readJson(response);
       if (
         !result ||
         typeof result !== "object" ||
         !("includedInTraining" in result) ||
-        result.includedInTraining !== (rating === "positive")
+        result.includedInTraining !== (rating === "positive" && !message.image)
       ) {
         throw new Error("A AKIRA não confirmou a gravação do feedback.");
       }
@@ -898,7 +904,9 @@ export default function Page() {
         ...chat,
         messages: chat.messages.map((item) => item.id === message.id ? { ...item, feedback: rating } : item),
       })));
-      setStatus(rating === "positive"
+      setStatus(message.image
+        ? "Obrigado. A avaliação da imagem foi guardada para revisão e não será usada como exemplo de treino."
+        : rating === "positive"
         ? "Obrigado. O 👍 foi guardado na AKIRA e entrou no conjunto considerado nos próximos ciclos de treino; a execução depende do agendamento e do mínimo de exemplos."
         : "Obrigado. O 👎 foi guardado para revisão e não entra no conjunto de treino.");
       setStatusKind("success");
@@ -1181,7 +1189,7 @@ export default function Page() {
                           </button>
                         </>
                       )}
-                      {message.role === "assistant" && !message.image && (
+                      {message.role === "assistant" && (
                         <>
                           <button
                             className={`icon-button feedback-button ${message.feedback === "positive" ? "selected" : ""}`}

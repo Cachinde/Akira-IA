@@ -60,7 +60,6 @@ export default async function SharedMessagePage({ params }: Props) {
             )}
             <section className="share-answer">
               <div className="share-section-label"><Logo size={20} /> RESPOSTA DA AKIRA</div>
-              <div className="markdown-content"><ReactMarkdown remarkPlugins={[remarkGfm]}>{content.answer}</ReactMarkdown></div>
               {content.image && (
                 <img
                   className="share-image"
@@ -70,6 +69,7 @@ export default async function SharedMessagePage({ params }: Props) {
                   decoding="async"
                 />
               )}
+              <div className="markdown-content"><ReactMarkdown remarkPlugins={[remarkGfm]}>{content.answer}</ReactMarkdown></div>
             </section>
           </>
         ) : (

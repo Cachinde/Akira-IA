@@ -294,6 +294,7 @@ export async function apiBotUiFeedback(
   rating: "positive" | "negative",
   prompt: string,
   response: string,
+  isImage: boolean,
 ): Promise<{ includedInTraining: boolean }> {
   const apiSecret = process.env.AKIRA_FEEDBACK_SECRET?.trim();
   if (!apiSecret || apiSecret.length < 32) {
@@ -305,6 +306,7 @@ export async function apiBotUiFeedback(
     rating,
     prompt,
     response,
+    isImage,
     apiSecret,
   ]);
   const output = objectOutput<{ saved?: unknown; included_in_training?: unknown; error?: unknown }>(
