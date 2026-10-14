@@ -7,6 +7,7 @@ const HF_TOKEN = process.env.HF_TOKEN?.trim();
 export type ChatMsg = { role: "user" | "assistant"; content: string };
 export type ChatResult = { reply: string; provider: string };
 export type ImageResult = { image: string; info: string; providerModel?: string };
+export type WebSearchResult = { query: string; summary: string; links: string[] };
 
 type ImagePayload = {
   image?: unknown;
@@ -232,6 +233,33 @@ export async function apiChat(message: string, history: ChatMsg[]): Promise<Chat
   return { reply, provider: "AKIRA-SOFTEDGE" };
 }
 
+export async function apiWebSearch(query: string): Promise<WebSearchResult> {
+  const client = await chatSpaceClient();
+  const result = await client.predict("/web_search", [query]);
+  const output = objectOutput<Record<string, unknown>>(result.data, "pesquisa web");
+  if (output.success !== true) {
+    throw new Error(
+      typeof output.error === "string" ? output.error : "A pesquisa não devolveu resultados.",
+    );
+  }
+
+  const summary = typeof output.summary === "string" ? output.summary.trim() : "";
+  const links = Array.isArray(output.links)
+    ? output.links.filter(
+        (link): link is string =>
+          typeof link === "string" && /^https?:\/\//i.test(link),
+      )
+    : [];
+  if (!summary && links.length === 0) {
+    throw new Error("A pesquisa terminou sem resumo ou fontes utilizáveis.");
+  }
+  return {
+    query: typeof output.query === "string" ? output.query : query,
+    summary,
+    links,
+  };
+}
+
 export async function apiImage(
   prompt: string,
   style = "foto realista",
@@ -258,6 +286,40 @@ export async function apiImage(
   return {
     image,
     info: typeof output.info === "string" ? output.info : "Imagem criada",
+    ...(typeof output.providerModel === "string" ? { providerModel: output.providerModel } : {}),
+  };
+}
+
+export async function apiImageWithReference(
+  prompt: string,
+  imageB64: string,
+  style: string,
+): Promise<ImageResult> {
+  const apiSecret = process.env.AKIRA_IMAGE_EDIT_SECRET?.trim();
+  if (!apiSecret || apiSecret.length < 32) {
+    throw new Error("A geração com imagem de referência requer AKIRA_IMAGE_EDIT_SECRET configurado no servidor.");
+  }
+  const client = await imageSpaceClient();
+  const result = await client.predict("/generate_image_reference", [
+    prompt,
+    imageB64,
+    style,
+    apiSecret,
+  ]);
+  const output = objectOutput<ImagePayload>(result.data, "geração com imagem de referência");
+  const image = await normalizeImageValue(output.image ?? output);
+
+  if (!image) {
+    throw new Error(
+      typeof output.info === "string" && output.info
+        ? `A AKIRA não conseguiu usar a imagem como referência: ${output.info}`
+        : "A AKIRA não devolveu uma imagem gerada com base na referência.",
+    );
+  }
+
+  return {
+    image,
+    info: typeof output.info === "string" ? output.info : "Imagem criada com referência",
     ...(typeof output.providerModel === "string" ? { providerModel: output.providerModel } : {}),
   };
 }

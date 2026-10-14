@@ -32,6 +32,7 @@ import {
 import { ChangeEvent, FormEvent, KeyboardEvent, useEffect, useRef, useState } from "react";
 import Logo from "../components/Logo";
 import { Chat, Msg, loadChats, saveChats } from "../lib/history";
+import { extractWebSearchQuery, isImageGenerationRequest } from "../lib/action-intents";
 import {
   CHAT_MESSAGE_CHARACTER_LIMIT,
   estimateTokens,
@@ -67,7 +68,8 @@ const FILE_LIMIT = 8 * 1024 * 1024;
 const DOCUMENT_EXTENSIONS = new Set(["txt", "md", "markdown", "csv", "json", "pdf", "docx"]);
 
 function isWebSearchRequest(text: string) {
-  return /\b(pesquis\w*|procur\w*|busc\w*)\b.{0,40}\b(web|internet|online)\b|\b(web|internet|online)\b.{0,40}\b(pesquis\w*|procur\w*|busc\w*)\b/i.test(text);
+  return extractWebSearchQuery(text) !== null ||
+    /\b(pesquis\w*|procur\w*|busc\w*|investig\w*)\b.{0,40}\b(web|internet|online)\b|\b(web|internet|online)\b.{0,40}\b(pesquis\w*|procur\w*|busc\w*|investig\w*)\b/i.test(text);
 }
 
 function uid() {
@@ -187,7 +189,15 @@ export default function Page() {
 
   const activeChat = chats.find((chat) => chat.id === activeId) || null;
   const messages = activeChat?.messages || [];
-  const messageCharacterLimit = imgMode || editTarget ? IMAGE_GENERATION_CHARACTER_LIMIT : CHAT_MESSAGE_CHARACTER_LIMIT;
+  const automaticImagePrompt =
+    !imgMode &&
+    !editTarget &&
+    isImageGenerationRequest(input) &&
+    (!attachment || Boolean(attachment.dataUrl));
+  const messageCharacterLimit =
+    imgMode || editTarget || automaticImagePrompt
+      ? IMAGE_GENERATION_CHARACTER_LIMIT
+      : CHAT_MESSAGE_CHARACTER_LIMIT;
   const messageExceedsLimit = input.length > messageCharacterLimit;
   const displayName = authSnapshot?.displayName?.trim() || "";
   const query = search.trim().toLocaleLowerCase("pt");
@@ -465,6 +475,19 @@ export default function Page() {
     const file = event.target.files?.[0];
     event.target.value = "";
     if (!file) return;
+    if (imgMode && !file.type.startsWith("image/")) {
+      setStatus("No modo de imagem, anexa uma imagem para servir de referência.");
+      setStatusKind("error");
+      return;
+    }
+    if (
+      imgMode &&
+      !["image/png", "image/jpeg", "image/jpg", "image/webp"].includes(file.type.toLocaleLowerCase("en"))
+    ) {
+      setStatus("As imagens de referência têm de estar em PNG, JPEG ou WebP.");
+      setStatusKind("error");
+      return;
+    }
     if (file.size > FILE_LIMIT) {
       setStatus("O ficheiro tem de ter menos de 8 MB.");
       setStatusKind("error");
@@ -528,7 +551,13 @@ export default function Page() {
   async function send(text?: string) {
     const rawContent = text ?? input;
     const content = rawContent.trim();
-    const imageRequest = imgMode || Boolean(editTarget);
+    const automaticImageRequest =
+      !imgMode &&
+      !editTarget &&
+      isImageGenerationRequest(content) &&
+      (!attachment || Boolean(attachment.dataUrl));
+    const imageRequest = imgMode || Boolean(editTarget) || automaticImageRequest;
+    const referenceImageRequest = imageRequest && !editTarget && Boolean(attachment?.dataUrl);
     const characterLimit = imageRequest ? IMAGE_GENERATION_CHARACTER_LIMIT : CHAT_MESSAGE_CHARACTER_LIMIT;
     if (rawContent.length > characterLimit) {
       if (text !== undefined) setInput(rawContent);
@@ -552,6 +581,15 @@ export default function Page() {
       setStatusKind("error");
       return;
     }
+    if (
+      referenceImageRequest &&
+      attachment?.dataUrl &&
+      !/^data:image\/(png|jpeg|jpg|webp);base64,/i.test(attachment.dataUrl)
+    ) {
+      setStatus("As imagens de referência têm de estar em PNG, JPEG ou WebP.");
+      setStatusKind("error");
+      return;
+    }
 
     let chatId = activeId;
     if (!chatId) {
@@ -568,6 +606,8 @@ export default function Page() {
     }));
     const visibleContent = editTarget
       ? `Edita a imagem: ${content}`
+      : referenceImageRequest
+        ? `Cria uma imagem com base na referência: ${content}`
       : imgMode
         ? `Cria uma imagem: ${content}`
         : content || (attachment?.text ? `Analisa o ficheiro ${attachment.name}.` : "Descreve esta imagem.");
@@ -586,6 +626,12 @@ export default function Page() {
           "A AKIRA está a aplicar as alterações pedidas",
           "A AKIRA está a finalizar a imagem editada",
         ]
+      : referenceImageRequest
+        ? [
+            "A AKIRA está a analisar a imagem de referência",
+            "A AKIRA está a preparar a composição visual",
+            "A AKIRA está a gerar uma nova imagem com base na referência",
+          ]
       : imgMode
         ? [
             "A AKIRA está a preparar a imagem",
@@ -632,6 +678,11 @@ export default function Page() {
                     ? { imageProviderModel: editTarget.providerModel }
                     : {}),
                 }
+              : referenceImageRequest && attachment?.dataUrl
+                ? {
+                    action: "reference",
+                    imageB64: attachment.dataUrl,
+                  }
               : {}),
             prompt: content,
             style: imageStyle,
@@ -682,7 +733,11 @@ export default function Page() {
           chatId,
           makeMessage(
             "assistant",
-            editTarget ? "A imagem editada está pronta." : "A imagem está pronta.",
+            editTarget
+              ? "A imagem editada está pronta."
+              : referenceImageRequest
+                ? "A imagem criada com base na referência está pronta."
+                : "A imagem está pronta.",
             {
               image: result.image,
               ...(resultProviderModel ? { imageProviderModel: resultProviderModel } : {}),
@@ -1277,7 +1332,10 @@ export default function Page() {
           {attachment && (
             <div className="attachment-card">
               {attachment.dataUrl ? <img src={attachment.dataUrl} alt="Pré-visualização da imagem" /> : <span className="attachment-file-icon"><Paperclip size={16} /></span>}
-              <span>{attachment.name}</span>
+              <span>
+                {attachment.name}
+                {(imgMode || automaticImagePrompt) && attachment.dataUrl && <small>Imagem de referência</small>}
+              </span>
               <button className="icon-button" onClick={() => setAttachment(null)} aria-label="Remover imagem">
                 <X size={15} />
               </button>
@@ -1330,7 +1388,15 @@ export default function Page() {
             <textarea
               ref={inputRef}
               rows={1}
-              placeholder={editTarget ? "Descreve as alterações a fazer à imagem…" : imgMode ? "Descreve a imagem que tens em mente…" : "Escreve a tua mensagem…"}
+              placeholder={
+                editTarget
+                  ? "Descreve as alterações a fazer à imagem…"
+                  : imgMode
+                    ? attachment?.dataUrl
+                      ? "Descreve a imagem a criar com base na referência…"
+                      : "Descreve a imagem que tens em mente…"
+                    : "Escreve a tua mensagem…"
+              }
               value={input}
               disabled={!historyReady || busy}
               onChange={(event) => setInput(event.target.value)}
@@ -1354,13 +1420,20 @@ export default function Page() {
                 <button
                   type="button"
                   className="icon-btn attach-btn"
-                  aria-label="Anexar imagem ou documento"
+                  aria-label={imgMode ? "Anexar imagem de referência" : "Anexar imagem ou documento"}
                   onClick={() => fileRef.current?.click()}
-                  disabled={!historyReady || busy || imgMode}
+                  disabled={!historyReady || busy || Boolean(editTarget)}
                 >
                   <Paperclip size={17} />
                 </button>
-                <input ref={fileRef} type="file" accept="image/*,.txt,.md,.markdown,.csv,.json,.pdf,.docx" hidden onChange={onFile} disabled={busy || imgMode} />
+                <input
+                  ref={fileRef}
+                  type="file"
+                  accept={imgMode ? "image/png,image/jpeg,image/webp" : "image/*,.txt,.md,.markdown,.csv,.json,.pdf,.docx"}
+                  hidden
+                  onChange={onFile}
+                  disabled={busy || Boolean(editTarget)}
+                />
                 <button
                   type="button"
                   className={`tools-button ${toolsOpen ? "selected" : ""}`}
@@ -1377,9 +1450,9 @@ export default function Page() {
                   type="submit"
                   className="send-btn"
                   disabled={!historyReady || busy || (!input.trim() && !attachment)}
-                  aria-label={imgMode ? "Gerar imagem" : "Enviar mensagem"}
+                  aria-label={imgMode || automaticImagePrompt ? "Gerar imagem" : "Enviar mensagem"}
                 >
-                  {busy ? <LoaderCircle className="spin" size={16} /> : imgMode ? <ImagePlus size={16} /> : <Send size={15} />}
+                  {busy ? <LoaderCircle className="spin" size={16} /> : imgMode || automaticImagePrompt ? <ImagePlus size={16} /> : <Send size={15} />}
                 </button>
               </div>
             </div>

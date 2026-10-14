@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { apiImage, apiDescribe, apiEditImage } from "@/lib/space";
+import { apiImage, apiDescribe, apiEditImage, apiImageWithReference } from "@/lib/space";
 import {
   consumeImageUsage,
   consumeUsage,
@@ -77,7 +77,8 @@ export async function POST(req: NextRequest) {
   const input = body as Record<string, unknown>;
   try {
     const editingImage = input.action === "edit";
-    if (typeof input.imageB64 === "string" && !editingImage) {
+    const referenceGeneration = input.action === "reference";
+    if (typeof input.imageB64 === "string" && !editingImage && !referenceGeneration) {
       if (!input.imageB64.startsWith("data:image/") || input.imageB64.length > 11_000_000) {
         return NextResponse.json({ error: "Anexa uma imagem válida com menos de 8 MB." }, { status: 413 });
       }
@@ -109,6 +110,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "A descrição excede o limite de 1.000 caracteres." }, { status: 413 });
     }
     const imageToEdit = editingImage && typeof input.imageB64 === "string" ? input.imageB64 : "";
+    const referenceImage = referenceGeneration && typeof input.imageB64 === "string" ? input.imageB64 : "";
+    if (referenceGeneration && !/^data:image\/(png|jpeg|jpg|webp);base64,[A-Za-z0-9+/]+={0,2}$/i.test(referenceImage)) {
+      return NextResponse.json({ error: "A imagem de referência é inválida." }, { status: 400 });
+    }
+    if (referenceGeneration && referenceImage.length > 11_000_000) {
+      return NextResponse.json({ error: "A imagem de referência excede o limite de 8 MB." }, { status: 413 });
+    }
     if (editingImage && !/^data:image\/(png|jpeg|jpg|webp);base64,[A-Za-z0-9+/]+={0,2}$/i.test(imageToEdit)) {
       return NextResponse.json({ error: "A imagem de referência para edição é inválida." }, { status: 400 });
     }
@@ -178,6 +186,8 @@ export async function POST(req: NextRequest) {
     const jobId = await createImageJob(identity.userId);
     const generation = editingImage
       ? apiEditImage(prompt, imageToEdit, providerModel)
+      : referenceGeneration
+        ? apiImageWithReference(prompt, referenceImage, style)
       : apiImage(prompt, style, history);
     void generation
       .then((result) => {

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { apiChat } from "@/lib/space";
+import { apiChat, apiWebSearch } from "@/lib/space";
+import { extractWebSearchQuery } from "@/lib/action-intents";
 import { consumeUsage, getOrCreateUser, setUserCookie } from "@/lib/billing";
 import {
   CHAT_MESSAGE_CHARACTER_LIMIT,
@@ -77,7 +78,20 @@ export async function POST(req: NextRequest) {
       if (identity.created) setUserCookie(response, identity.userId);
       return response;
     }
-    const response = NextResponse.json(await apiChat(requestMessage, history));
+    const searchQuery = extractWebSearchQuery(message);
+    const chatResult = searchQuery
+      ? await (async () => {
+          const search = await apiWebSearch(searchQuery);
+          const sources = search.links.length
+            ? `\n\nFontes:\n${search.links.map((link, index) => `${index + 1}. ${link}`).join("\n")}`
+            : "";
+          return {
+            reply: `${search.summary || "Encontrei estas fontes para a pesquisa."}${sources}`,
+            provider: "web_search",
+          };
+        })()
+      : await apiChat(requestMessage, history);
+    const response = NextResponse.json(chatResult);
     if (identity.created) setUserCookie(response, identity.userId);
     return response;
   } catch (error) {

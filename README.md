@@ -20,11 +20,12 @@ O chat e as imagens ligam-se ao Space Gradio `akra35567/AKIRA-SOFTEDGE`. A URL `
 
 - `/_send` (AKIRA-SOFTEDGE) — resposta de conversa, com o histórico anterior da sessão.
 - `/generate_image` (AKIRA-SOFTEDGE) — geração de imagem com prompt, estilo e contexto recente da conversa.
+- `/generate_image_reference` (AKIRA-SOFTEDGE) — geração de uma nova imagem usando uma imagem enviada como referência; requer `AKIRA_IMAGE_EDIT_SECRET` igual nos dois serviços.
 - `/edit_image` (AKIRA-SOFTEDGE) — edição da imagem de referência por prompt; requer `AKIRA_IMAGE_EDIT_SECRET` igual nos dois serviços.
 - `/bot_ui_feedback` (AKIRA-SOFTEDGE) — recebe as reações do bot_ui; requer `AKIRA_FEEDBACK_SECRET` igual nos dois serviços.
 - `/describe_image` — análise de uma imagem codificada em base64.
 
-As rotas Next `/api/chat`, `/api/image` e `/api/feedback` fazem as chamadas no servidor para não expor credenciais ao browser. Por padrão, chat e imagens usam `akra35567/AKIRA-SOFTEDGE`; `AKIRA_CHAT_SPACE_ID` e `HF_SPACE_ID` podem ser configurados explicitamente. Erros do Space são devolvidos como erros HTTP explícitos, em vez de mensagens com aparência de sucesso. A edição envia a imagem original ao Space, consome a quota de imagens e guarda o resultado como uma nova mensagem; a geração do zero continua disponível separadamente.
+As rotas Next `/api/chat`, `/api/image` e `/api/feedback` fazem as chamadas no servidor para não expor credenciais ao browser. Por padrão, chat e imagens usam `akra35567/AKIRA-SOFTEDGE`; `AKIRA_CHAT_SPACE_ID` e `HF_SPACE_ID` podem ser configurados explicitamente. Erros do Space são devolvidos como erros HTTP explícitos, em vez de mensagens com aparência de sucesso. É possível anexar uma imagem no modo de criação ou incluir uma imagem num pedido explícito de geração; a referência é enviada ao provider compatível, consome a quota de imagens e o resultado fica guardado como uma nova mensagem. Se o provider não conseguir usar a referência, a AKIRA devolve um erro em vez de recorrer ao Canva para criar uma imagem sem a referência. A edição de uma imagem gerada continua separada.
 
 As reações 👍/👎 são guardadas tanto no PostgreSQL do bot_ui como na base da AKIRA-SOFTEDGE. Apenas respostas de texto com 👍 são adicionadas à tabela `mensagens`, que é a fonte de `prepare_dataset()` nos ciclos periódicos de treino; avaliações de imagens e 👎 ficam registadas para análise e não entram no dataset. Se uma avaliação de texto passar de 👍 para 👎, o exemplo é removido de `mensagens` para os próximos ciclos (um modelo já treinado não é revertido). O treino continua sujeito ao agendamento ativo e ao mínimo de exemplos exigido pelo trainer. Os botões de reação aparecem nas respostas do assistente, incluindo nas que contêm imagens.
 

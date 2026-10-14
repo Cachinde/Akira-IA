@@ -293,6 +293,7 @@ button:disabled { cursor: not-allowed; }
 .attachment-card > img { width: 32px; height: 32px; border-radius: 7px; object-fit: cover; }
 .attachment-file-icon { display: grid; width: 32px; height: 32px; flex: 0 0 auto; place-items: center; border-radius: 7px; background: #29272f; color: #c9bbf3; }
 .attachment-card > span { flex: 1; overflow: hidden; color: #bbb7c2; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.attachment-card > span small { display: block; margin-top: 2px; color: #9288a7; font-size: 9px; }
 .image-mode-bar { min-height: 44px; }
 .image-mode-bar > span { display: inline-flex; align-items: center; gap: 6px; color: #d8ccfb; font-size: 10px; font-weight: 600; }
 .image-mode-bar > label { position: relative; display: inline-flex; align-items: center; gap: 7px; margin-left: auto; color: #8d8993; font-size: 9px; }
