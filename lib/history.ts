@@ -117,6 +117,7 @@ function normalizeChat(chat: Chat, index: number): Chat {
     (!chat.pendingRequest.requestPayload ||
       ((chat.pendingRequest.requestPayload.endpoint === "/api/chat" ||
         chat.pendingRequest.requestPayload.endpoint === "/api/image") &&
+        !!chat.pendingRequest.requestPayload.body &&
         typeof chat.pendingRequest.requestPayload.body === "object"))
       ? { pendingRequest: chat.pendingRequest }
       : {}),

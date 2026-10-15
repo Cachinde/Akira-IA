@@ -22,6 +22,7 @@ import {
   Search,
   Send,
   Share2,
+  ShieldAlert,
   Sparkles,
   SquarePen,
   Trash2,
@@ -59,6 +60,8 @@ class HttpResponseError extends Error {
     super(message);
   }
 }
+
+class ContentModerationError extends Error {}
 
 class UsageLimitError extends Error {
   constructor(
@@ -119,6 +122,9 @@ function responseError(data: unknown, fallback: string) {
 async function readJson(response: Response) {
   const data: unknown = await response.json().catch(() => null);
   if (!response.ok) {
+    if (data && typeof data === "object" && "code" in data && data.code === "content_moderation") {
+      throw new ContentModerationError(responseError(data, "Reformula a descrição e tenta novamente."));
+    }
     if (data && typeof data === "object" && "code" in data && data.code === "account_required") {
       throw new AccountRequiredError(responseError(data, "Cria uma conta grátis para continuares."));
     }
@@ -206,6 +212,12 @@ export default function Page() {
   const [status, setStatus] = useState("");
   const [statusKind, setStatusKind] = useState<"error" | "success" | "">("");
   const [quotaNotice, setQuotaNotice] = useState<UsageLimitError | null>(null);
+  const [moderationNotice, setModerationNotice] = useState<{
+    chatId: string;
+    prompt: string;
+    imageRequest: boolean;
+    editRequest: boolean;
+  } | null>(null);
   const [countdownNow, setCountdownNow] = useState(Date.now());
   const [imageStyle, setImageStyle] = useState(STYLES[0]);
   const [editTarget, setEditTarget] = useState<{
@@ -499,6 +511,7 @@ export default function Page() {
         setToolsOpen(false);
         setChatMenu(null);
         setQuotaNotice(null);
+        setModerationNotice(null);
         setExpandedImage(null);
       }
     }
@@ -602,6 +615,63 @@ export default function Page() {
     }
   }
 
+  function rememberModerationBlock(
+    chatId: string,
+    pending: NonNullable<Chat["pendingRequest"]>,
+  ) {
+    const requestBody = pending.requestPayload?.body;
+    const prompt =
+      requestBody && typeof requestBody.prompt === "string"
+        ? requestBody.prompt
+        : chatsRef.current
+            .find((chat) => chat.id === chatId)
+            ?.messages.find((message) => message.id === pending.userMessageId)?.content || "";
+    setModerationNotice({
+      chatId,
+      prompt,
+      imageRequest: pending.kind === "image",
+      editRequest: requestBody?.action === "edit",
+    });
+    clearPendingJob(chatId, pending.jobId);
+  }
+
+  function reformulateBlockedPrompt() {
+    if (!moderationNotice) return;
+    const { chatId, prompt, imageRequest, editRequest } = moderationNotice;
+    const chat = chatsRef.current.find((item) => item.id === chatId);
+    const userMessage = chat?.messages[chat.messages.length - 1];
+    activeSessionVersionRef.current += 1;
+    setActiveSessionVersion(activeSessionVersionRef.current);
+    activeIdRef.current = chatId;
+    setActiveId(chatId);
+    setInput(prompt);
+    setStatus("");
+    setStatusKind("");
+    if (imageRequest && !editRequest) {
+      setImgMode(true);
+      if (userMessage?.attachment?.startsWith("data:image/")) {
+        setAttachment({
+          name: userMessage.attachmentName || "Imagem de referência",
+          dataUrl: userMessage.attachment,
+        });
+      }
+    }
+    if (editRequest && userMessage?.attachment) {
+      const sourceImageMessage = chat?.messages.find(
+        (message) => message.role === "assistant" && message.image === userMessage.attachment,
+      );
+      setEditTarget({
+        messageId: sourceImageMessage?.id || userMessage.id,
+        image: userMessage.attachment,
+        ...(sourceImageMessage?.imageProviderModel
+          ? { providerModel: sourceImageMessage.imageProviderModel }
+          : {}),
+      });
+    }
+    setModerationNotice(null);
+    window.setTimeout(() => inputRef.current?.focus(), 0);
+  }
+
   async function runPendingJob(
     chatId: string,
     pending: NonNullable<Chat["pendingRequest"]>,
@@ -661,10 +731,14 @@ export default function Page() {
       return true;
     } catch (error) {
       const message = error instanceof Error ? error.message : "Erro inesperado ao consultar o pedido.";
-      finishPendingJob(chatId, pending, scope, undefined, message);
-      if (activeIdRef.current === chatId) {
-        setStatus(message);
-        setStatusKind("error");
+      if (error instanceof ContentModerationError) {
+        rememberModerationBlock(chatId, pending);
+      } else {
+        finishPendingJob(chatId, pending, scope, undefined, message);
+        if (activeIdRef.current === chatId) {
+          setStatus(message);
+          setStatusKind("error");
+        }
       }
       return false;
     } finally {
@@ -1117,6 +1191,10 @@ export default function Page() {
       activeJobPollsRef.current.delete(jobId);
       if (error instanceof TypeError && authSnapshot.historyScope) {
         await runPendingJob(chatId, pendingRequest, authSnapshot.historyScope);
+        return;
+      }
+      if (error instanceof ContentModerationError) {
+        rememberModerationBlock(chatId, pendingRequest);
         return;
       }
       clearPendingJob(
@@ -1815,6 +1893,50 @@ export default function Page() {
             </button>
             <img className="image-viewer-image" src={expandedImage.src} alt={expandedImage.alt} />
             <span className="image-viewer-hint">Pressiona Esc ou clica fora da imagem para fechar</span>
+          </section>
+        </div>
+      )}
+      {moderationNotice && (
+        <div
+          className="moderation-overlay"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setModerationNotice(null);
+          }}
+        >
+          <section
+            className="moderation-dialog"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="moderation-title"
+            aria-describedby="moderation-description"
+          >
+            <button
+              className="moderation-close icon-button"
+              onClick={() => setModerationNotice(null)}
+              aria-label="Fechar aviso"
+            >
+              <X size={17} />
+            </button>
+            <span className="moderation-icon"><ShieldAlert size={22} /></span>
+            <span className="moderation-eyebrow">PEDIDO NÃO CONCLUÍDO</span>
+            <h2 id="moderation-title">Vamos reformular a descrição?</h2>
+            <p id="moderation-description">
+              Esta descrição pode incluir conteúdo que não é permitido para geração de imagens.
+              A imagem não foi criada. Tenta reformular o pedido de forma diferente.
+            </p>
+            <div className="moderation-actions">
+              <button
+                className="moderation-primary"
+                onClick={reformulateBlockedPrompt}
+                autoFocus
+              >
+                Reformular descrição
+              </button>
+              <button className="moderation-secondary" onClick={() => setModerationNotice(null)}>
+                Fechar
+              </button>
+            </div>
           </section>
         </div>
       )}

@@ -1,5 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { apiImage, apiDescribe, apiEditImage, apiImageWithReference } from "@/lib/space";
+import {
+  apiImage,
+  apiDescribe,
+  apiEditImage,
+  apiImageWithReference,
+  ContentModerationError,
+} from "@/lib/space";
 import {
   consumeImageUsage,
   consumeUsage,
@@ -39,7 +45,12 @@ export async function GET(req: NextRequest) {
 
   if (job.status === "failed") {
     return NextResponse.json(
-      { error: job.error || "Não foi possível gerar a imagem." },
+      {
+        ...(job.errorCode ? { code: job.errorCode } : {}),
+        error: job.errorCode === "content_moderation"
+          ? "O pedido pode conter conteúdo não permitido para geração de imagens. Reformula a descrição e tenta novamente."
+          : job.error || "Não foi possível gerar a imagem.",
+      },
       { status: 503, headers: { "Cache-Control": "no-store" } },
     );
   }
@@ -213,8 +224,17 @@ export async function POST(req: NextRequest) {
       })
       .catch((error: unknown) => {
         console.error("Falha na geração assíncrona da imagem da AKIRA.", error);
-        const message = error instanceof Error ? error.message : "Erro inesperado na geração da imagem.";
-        return updateImageJob(jobId, { status: "failed", error: message }).catch((persistenceError: unknown) => {
+        const contentModerationBlocked = error instanceof ContentModerationError;
+        const message = contentModerationBlocked
+          ? "O pedido pode conter conteúdo não permitido para geração de imagens. Reformula a descrição e tenta novamente."
+          : error instanceof Error
+            ? error.message
+            : "Erro inesperado na geração da imagem.";
+        return updateImageJob(jobId, {
+          status: "failed",
+          error: message,
+          ...(contentModerationBlocked ? { errorCode: "content_moderation" as const } : {}),
+        }).catch((persistenceError: unknown) => {
           console.error("Falha ao guardar o estado de erro da geração de imagem.", persistenceError);
         });
       });

@@ -116,8 +116,10 @@ export async function ensureBillingSchema(): Promise<void> {
           status TEXT NOT NULL CHECK (status IN ('processing', 'complete', 'failed')),
           result JSONB,
           error TEXT,
+          error_code TEXT,
           updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         );
+        ALTER TABLE akira_image_jobs ADD COLUMN IF NOT EXISTS error_code TEXT;
         CREATE INDEX IF NOT EXISTS akira_image_jobs_updated_at
           ON akira_image_jobs (updated_at);
         CREATE TABLE IF NOT EXISTS akira_chat_jobs (
@@ -293,15 +295,18 @@ export async function getChatJob(jobId: string, userId: string): Promise<{
 
 export async function updateImageJob(
   jobId: string,
-  update: { status: "complete"; result: ImageJobResult } | { status: "failed"; error: string },
+  update:
+    | { status: "complete"; result: ImageJobResult }
+    | { status: "failed"; error: string; errorCode?: "content_moderation" },
 ): Promise<void> {
   await ensureBillingSchema();
   await billingPool().query(
     `UPDATE akira_image_jobs
-     SET status = $2, result = $3, error = $4, updated_at = NOW()
+     SET status = $2, result = $3, error = $4, error_code = $5, updated_at = NOW()
      WHERE job_id = $1`,
     [jobId, update.status, update.status === "complete" ? JSON.stringify(update.result) : null,
-      update.status === "failed" ? update.error : null],
+      update.status === "failed" ? update.error : null,
+      update.status === "failed" ? update.errorCode || null : null],
   );
 }
 
@@ -309,19 +314,29 @@ export async function getImageJob(jobId: string, userId: string): Promise<{
   status: ImageJobStatus;
   result: ImageJobResult | null;
   error: string | null;
+  errorCode: "content_moderation" | null;
 } | null> {
   await ensureBillingSchema();
   const result = await billingPool().query<{
     status: ImageJobStatus;
     result: ImageJobResult | null;
     error: string | null;
+    error_code: "content_moderation" | null;
   }>(
-    `SELECT status, result, error
+    `SELECT status, result, error, error_code
      FROM akira_image_jobs
      WHERE job_id = $1 AND user_id = $2 AND updated_at >= NOW() - INTERVAL '24 hours'`,
     [jobId, userId],
   );
-  return result.rows[0] || null;
+  const job = result.rows[0];
+  return job
+    ? {
+        status: job.status,
+        result: job.result,
+        error: job.error,
+        errorCode: job.error_code,
+      }
+    : null;
 }
 
 function cookieSecret(): string {

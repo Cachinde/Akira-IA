@@ -9,11 +9,28 @@ export type ChatResult = { reply: string; provider: string };
 export type ImageResult = { image: string; info: string; providerModel?: string };
 export type WebSearchResult = { query: string; summary: string; links: string[] };
 
+export class ContentModerationError extends Error {
+  constructor() {
+    super("O pedido pode conter conteúdo não permitido para geração de imagens. Reformula a descrição e tenta novamente.");
+  }
+}
+
 type ImagePayload = {
   image?: unknown;
   info?: unknown;
   providerModel?: unknown;
+  contentModerationBlocked?: unknown;
+  content_moderation_blocked?: unknown;
 };
+
+function throwForImageModeration(output: ImagePayload): void {
+  if (
+    output.contentModerationBlocked === true ||
+    output.content_moderation_blocked === true
+  ) {
+    throw new ContentModerationError();
+  }
+}
 
 const MAX_IMAGE_BYTES = 12 * 1024 * 1024;
 
@@ -264,6 +281,7 @@ export async function apiImage(
   const client = await imageSpaceClient();
   const result = await client.predict("/generate_image", [prompt, style, JSON.stringify(history)]);
   const output = objectOutput<ImagePayload>(result.data, "geração de imagem");
+  throwForImageModeration(output);
   const image = await normalizeImageValue(output.image ?? output);
 
   if (!image) {
@@ -303,6 +321,7 @@ export async function apiImageWithReference(
     apiSecret,
   ]);
   const output = objectOutput<ImagePayload>(result.data, "geração com imagem de referência");
+  throwForImageModeration(output);
   const image = await normalizeImageValue(output.image ?? output);
 
   if (!image) {
@@ -332,6 +351,7 @@ export async function apiEditImage(
   const client = await imageSpaceClient();
   const result = await client.predict("/edit_image", [prompt, imageB64, apiSecret, providerModel]);
   const output = objectOutput<ImagePayload>(result.data, "edição de imagem");
+  throwForImageModeration(output);
   const image = await normalizeImageValue(output.image ?? output);
 
   if (!image) {
