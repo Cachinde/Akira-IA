@@ -31,7 +31,7 @@ import {
 } from "lucide-react";
 import { ChangeEvent, FormEvent, KeyboardEvent, useEffect, useRef, useState } from "react";
 import Logo from "../components/Logo";
-import { Chat, Msg, clearChats, deleteChat, loadChats, saveChats } from "../lib/history";
+import { Chat, Msg, clearChats, deleteChat, loadChats, saveChat, saveChats } from "../lib/history";
 import { extractWebSearchQuery, isImageGenerationRequest } from "../lib/action-intents";
 import {
   CHAT_MESSAGE_CHARACTER_LIMIT,
@@ -53,6 +53,12 @@ type AuthSnapshot = {
 type AuthMode = "profile" | "account" | null;
 
 class AccountRequiredError extends Error {}
+
+class HttpResponseError extends Error {
+  constructor(message: string, readonly status: number) {
+    super(message);
+  }
+}
 
 class UsageLimitError extends Error {
   constructor(
@@ -127,9 +133,48 @@ async function readJson(response: Response) {
       const retryAt = "retryAt" in data && typeof data.retryAt === "string" ? data.retryAt : null;
       throw new UsageLimitError(data.metric, responseError(data, "Atingiste o limite de utilização do teu plano."), retryAt);
     }
-    throw new Error(responseError(data, "O pedido à AKIRA não foi concluído."));
+    throw new HttpResponseError(
+      responseError(data, "O pedido à AKIRA não foi concluído."),
+      response.status,
+    );
   }
   return data;
+}
+
+async function waitForJob(endpoint: string, jobId: string): Promise<unknown> {
+  let delay = 1_500;
+  while (true) {
+    try {
+      const separator = endpoint.includes("?") ? "&" : "?";
+      const response = await fetch(`${endpoint}${separator}jobId=${encodeURIComponent(jobId)}`, {
+        cache: "no-store",
+        signal: AbortSignal.timeout(20_000),
+      });
+      const result = await readJson(response);
+      if (
+        result &&
+        typeof result === "object" &&
+        "status" in result &&
+        result.status === "processing"
+      ) {
+        await new Promise((resolve) => setTimeout(resolve, delay));
+        delay = Math.min(delay + 1_000, 8_000);
+        continue;
+      }
+      return result;
+    } catch (error) {
+      if (
+        error instanceof DOMException &&
+        (error.name === "TimeoutError" || error.name === "AbortError")
+      ) {
+        console.warn("A consulta do pedido expirou; continuará a ser consultada.", error);
+      } else if (!(error instanceof TypeError)) {
+        throw error;
+      }
+      await new Promise((resolve) => setTimeout(resolve, delay));
+      delay = Math.min(delay + 1_000, 8_000);
+    }
+  }
 }
 
 const suggestions = [
@@ -190,8 +235,11 @@ export default function Page() {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const imageViewerCloseRef = useRef<HTMLButtonElement>(null);
   const pendingChatIdsRef = useRef(new Set<string>());
+  const activeJobPollsRef = useRef(new Set<string>());
   const activeIdRef = useRef<string | null>(null);
   const activeSessionVersionRef = useRef(0);
+  const chatsRef = useRef(chats);
+  chatsRef.current = chats;
 
   const activeChat = chats.find((chat) => chat.id === activeId) || null;
   const messages = activeChat?.messages || [];
@@ -232,6 +280,7 @@ export default function Page() {
       .then((list) => {
         if (!active) return;
         setChats(list);
+        chatsRef.current = list;
         setHistoryWritable(true);
         setHistoryReady(true);
       })
@@ -244,6 +293,18 @@ export default function Page() {
       active = false;
     };
   }, [authReady, authSnapshot?.historyScope]);
+
+  useEffect(() => {
+    const scope = authSnapshot?.historyScope;
+    if (!historyReady || !scope) return;
+    const pendingChats = chats.filter((chat) => chat.pendingRequest);
+    pendingChatIdsRef.current = new Set(pendingChats.map((chat) => chat.id));
+    setPendingChatIds(new Set(pendingChatIdsRef.current));
+    for (const chat of pendingChats) {
+      const pending = chat.pendingRequest;
+      if (pending) void runPendingJob(chat.id, pending, scope);
+    }
+  }, [authSnapshot?.historyScope, chats, historyReady]);
 
   useEffect(() => {
     let active = true;
@@ -446,21 +507,176 @@ export default function Page() {
     return () => window.removeEventListener("keydown", onShortcut);
   }, []);
 
-  function pushMessage(chatId: string, message: Msg) {
-    setChats((current) =>
-      current
-        .map((chat) => {
-          if (chat.id !== chatId) return chat;
-          const firstUserMessage = !chat.messages.some((item) => item.role === "user") && message.role === "user";
-          return {
-            ...chat,
-            title: firstUserMessage ? conversationTitle(message.content) : chat.title,
-            updatedAt: message.createdAt,
-            messages: [...chat.messages, message],
-          };
-        })
-        .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
-    );
+  function finishPendingJob(
+    chatId: string,
+    pending: NonNullable<Chat["pendingRequest"]>,
+    scope: string,
+    result?: unknown,
+    error?: string,
+  ) {
+    const currentChat = chatsRef.current.find((chat) => chat.id === chatId);
+    if (currentChat?.pendingRequest?.jobId !== pending.jobId) return;
+
+    let assistantMessage: Msg;
+    if (error) {
+      assistantMessage = makeMessage("assistant", `O pedido não foi concluído: ${error}`);
+    } else if (
+      pending.kind === "image" &&
+      result &&
+      typeof result === "object" &&
+      "image" in result &&
+      typeof result.image === "string"
+    ) {
+      const providerModel =
+        "providerModel" in result && typeof result.providerModel === "string"
+          ? result.providerModel
+          : undefined;
+      assistantMessage = makeMessage("assistant", pending.completionText, {
+        image: result.image,
+        ...(providerModel ? { imageProviderModel: providerModel } : {}),
+      });
+    } else if (
+      pending.kind === "chat" &&
+      result &&
+      typeof result === "object" &&
+      "reply" in result &&
+      typeof result.reply === "string"
+    ) {
+      assistantMessage = makeMessage("assistant", result.reply);
+    } else {
+      assistantMessage = makeMessage("assistant", "A AKIRA devolveu um resultado inválido para este pedido.");
+    }
+
+    const { pendingRequest: _pendingRequest, ...chatWithoutPending } = currentChat;
+    const resultContext =
+      pending.kind === "chat" &&
+      result &&
+      typeof result === "object" &&
+      "context" in result &&
+      typeof result.context === "string"
+        ? result.context
+        : null;
+    const messagesWithContext = resultContext
+      ? currentChat.messages.map((message) =>
+          message.id === pending.userMessageId ? { ...message, context: resultContext } : message,
+        )
+      : currentChat.messages;
+    const updatedChat: Chat = {
+      ...chatWithoutPending,
+      messages: [...messagesWithContext, assistantMessage],
+      updatedAt: assistantMessage.createdAt,
+    };
+    const updatedChats = chatsRef.current
+      .map((chat) => (chat.id === chatId ? updatedChat : chat))
+      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    chatsRef.current = updatedChats;
+    setChats(updatedChats);
+    saveChat(scope, updatedChat).catch((storageError: unknown) => {
+      setStorageError(storageError instanceof Error ? storageError.message : "Não foi possível guardar a resposta.");
+    });
+  }
+
+  function clearPendingJob(chatId: string, jobId: string, removeUserMessage = false) {
+    const currentChat = chatsRef.current.find((chat) => chat.id === chatId);
+    if (currentChat?.pendingRequest?.jobId !== jobId) return;
+    const { pendingRequest: _pendingRequest, ...chatWithoutPending } = currentChat;
+    const updatedChat: Chat = {
+      ...chatWithoutPending,
+      ...(removeUserMessage
+        ? {
+            messages: currentChat.messages.filter(
+              (message) => message.id !== currentChat.pendingRequest?.userMessageId,
+            ),
+          }
+        : {}),
+      updatedAt: new Date().toISOString(),
+    };
+    const updatedChats = chatsRef.current.map((chat) => (chat.id === chatId ? updatedChat : chat));
+    chatsRef.current = updatedChats;
+    setChats(updatedChats);
+    const scope = authSnapshot?.historyScope;
+    if (scope) {
+      saveChat(scope, updatedChat).catch((storageError: unknown) => {
+        setStorageError(storageError instanceof Error ? storageError.message : "Não foi possível atualizar o histórico.");
+      });
+    }
+  }
+
+  async function runPendingJob(
+    chatId: string,
+    pending: NonNullable<Chat["pendingRequest"]>,
+    scope: string,
+  ): Promise<boolean> {
+    if (activeJobPollsRef.current.has(pending.jobId)) return false;
+    activeJobPollsRef.current.add(pending.jobId);
+    pendingChatIdsRef.current.add(chatId);
+    setPendingChatIds(new Set(pendingChatIdsRef.current));
+    try {
+      const endpoint = pending.kind === "image" ? "/api/image" : "/api/chat";
+      let result: unknown;
+      try {
+        result = await waitForJob(endpoint, pending.jobId);
+      } catch (error) {
+        const age = Date.now() - Date.parse(pending.createdAt);
+        if (
+          !(error instanceof HttpResponseError && error.status === 404) ||
+          !pending.requestPayload ||
+          age < 0 ||
+          age > 24 * 60 * 60_000
+        ) {
+          throw error;
+        }
+        const userMessage = chatsRef.current
+          .find((chat) => chat.id === chatId)
+          ?.messages.find((message) => message.id === pending.userMessageId);
+        const body: Record<string, unknown> = {
+          ...pending.requestPayload.body,
+          jobId: pending.jobId,
+        };
+        if (userMessage?.attachment?.startsWith("data:image/")) {
+          body.imageB64 = userMessage.attachment;
+        }
+        await readJson(
+          await fetch(pending.requestPayload.endpoint, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          }),
+        );
+        result = await waitForJob(endpoint, pending.jobId);
+      }
+      if (
+        pending.kind === "image" &&
+        (!result || typeof result !== "object" || !("image" in result) || typeof result.image !== "string")
+      ) {
+        throw new Error("A AKIRA não devolveu uma imagem válida.");
+      }
+      if (
+        pending.kind === "chat" &&
+        (!result || typeof result !== "object" || !("reply" in result) || typeof result.reply !== "string")
+      ) {
+        throw new Error("A AKIRA devolveu uma resposta inválida.");
+      }
+      finishPendingJob(chatId, pending, scope, result);
+      return true;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Erro inesperado ao consultar o pedido.";
+      finishPendingJob(chatId, pending, scope, undefined, message);
+      if (activeIdRef.current === chatId) {
+        setStatus(message);
+        setStatusKind("error");
+      }
+      return false;
+    } finally {
+      activeJobPollsRef.current.delete(pending.jobId);
+      pendingChatIdsRef.current.delete(chatId);
+      setPendingChatIds(new Set(pendingChatIdsRef.current));
+      setRequestActivities((current) => {
+        const next = { ...current };
+        delete next[chatId];
+        return next;
+      });
+    }
   }
 
   function newChat() {
@@ -481,7 +697,9 @@ export default function Page() {
   }
 
   function removeChat(id: string) {
-    setChats((current) => current.filter((chat) => chat.id !== id));
+    const remainingChats = chatsRef.current.filter((chat) => chat.id !== id);
+    chatsRef.current = remainingChats;
+    setChats(remainingChats);
     if (activeId === id) {
       activeSessionVersionRef.current += 1;
       setActiveSessionVersion(activeSessionVersionRef.current);
@@ -502,6 +720,7 @@ export default function Page() {
 
   function clearHistory() {
     if (!chats.length || !window.confirm("Apagar todas as conversas desta conta guardadas neste navegador?")) return;
+    chatsRef.current = [];
     setChats([]);
     activeSessionVersionRef.current += 1;
     setActiveSessionVersion(activeSessionVersionRef.current);
@@ -706,7 +925,8 @@ export default function Page() {
     pendingChatIdsRef.current.add(chatId);
     setPendingChatIds(new Set(pendingChatIdsRef.current));
 
-    const currentChat = chats.find((chat) => chat.id === chatId);
+    const existingChats = chatsRef.current;
+    const currentChat = existingChats.find((chat) => chat.id === chatId);
     const previousHistory = (currentChat?.messages || []).map((message) => ({
       role: message.role,
       content: message.context ? `${message.content}\n\n${message.context}` : message.content,
@@ -724,7 +944,72 @@ export default function Page() {
       context: attachment?.text,
     });
 
-    pushMessage(chatId, userMessage);
+    const jobId = uid();
+    const chatMessage =
+      content ||
+      (attachment?.text ? `Analisa o ficheiro ${attachment.name}.` : "Descreve esta imagem em detalhe.");
+    const chatContext = attachment?.text
+      ? `[Conteúdo extraído do ficheiro ${attachment.name}]\n${attachment.text}`
+      : "";
+    const imageRequestBody: Record<string, unknown> = {
+      jobId,
+      ...(editTarget
+        ? {
+            action: "edit",
+            imageB64: editTarget.image,
+            ...(editTarget.providerModel ? { imageProviderModel: editTarget.providerModel } : {}),
+          }
+        : referenceImageRequest && attachment?.dataUrl
+          ? { action: "reference", imageB64: attachment.dataUrl }
+          : {}),
+      prompt: content,
+      style: imageStyle,
+      history: previousHistory.slice(-8),
+    };
+    const chatRequestBody: Record<string, unknown> = {
+      jobId,
+      message: chatMessage,
+      context: chatContext,
+      ...(attachment?.dataUrl ? { imageB64: attachment.dataUrl } : {}),
+      history: previousHistory,
+    };
+    const { imageB64: _imageBytes, ...imageRecoveryBody } = imageRequestBody;
+    const { imageB64: _chatImageBytes, ...chatRecoveryBody } = chatRequestBody;
+    const pendingRequest: NonNullable<Chat["pendingRequest"]> = {
+      jobId,
+      kind: imageRequest ? "image" : "chat",
+      completionText: editTarget
+        ? "A imagem editada está pronta."
+        : referenceImageRequest
+          ? "A imagem criada com base na referência está pronta."
+          : "A imagem está pronta.",
+      userMessageId: userMessage.id,
+      createdAt: new Date().toISOString(),
+      requestPayload: imageRequest
+        ? { endpoint: "/api/image", body: imageRecoveryBody }
+        : { endpoint: "/api/chat", body: chatRecoveryBody },
+    };
+    activeJobPollsRef.current.add(jobId);
+    const baseChat: Chat = currentChat || {
+      id: chatId,
+      title: "Nova conversa",
+      messages: [],
+      updatedAt: userMessage.createdAt,
+    };
+    const queuedChat: Chat = {
+      ...baseChat,
+      title: baseChat.messages.some((item) => item.role === "user")
+        ? baseChat.title
+        : conversationTitle(userMessage.content),
+      messages: [...baseChat.messages, userMessage],
+      updatedAt: userMessage.createdAt,
+      pendingRequest,
+    };
+    const queuedChats = currentChat
+      ? existingChats.map((chat) => (chat.id === chatId ? queuedChat : chat))
+      : [queuedChat, ...existingChats];
+    chatsRef.current = queuedChats;
+    setChats(queuedChats);
     setInput("");
     setAttachment(null);
     const nextActivityMessages = editTarget
@@ -779,153 +1064,48 @@ export default function Page() {
     setToolsOpen(false);
 
     try {
+      if (!authSnapshot.historyScope) {
+        throw new Error("Não foi possível associar o pedido à conta atual.");
+      }
+      await saveChat(authSnapshot.historyScope, queuedChat);
       if (imageRequest) {
         const response = await fetch("/api/image", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            ...(editTarget
-              ? {
-                  action: "edit",
-                  imageB64: editTarget.image,
-                  ...(editTarget.providerModel
-                    ? { imageProviderModel: editTarget.providerModel }
-                    : {}),
-                }
-              : referenceImageRequest && attachment?.dataUrl
-                ? {
-                    action: "reference",
-                    imageB64: attachment.dataUrl,
-                  }
-              : {}),
-            prompt: content,
-            style: imageStyle,
-            history: previousHistory.slice(-8),
-          }),
-          signal: AbortSignal.timeout(15_000),
+          body: JSON.stringify(imageRequestBody),
         });
         const started: unknown = await readJson(response);
-        if (!started || typeof started !== "object" || !("jobId" in started) || typeof started.jobId !== "string") {
+        if (
+          !started ||
+          typeof started !== "object" ||
+          !("jobId" in started) ||
+          started.jobId !== jobId
+        ) {
           throw new Error("A AKIRA não iniciou a geração da imagem corretamente.");
         }
-
-        const deadline = Date.now() + 5 * 60_000;
-        let result: unknown;
-        while (Date.now() < deadline) {
-          await new Promise((resolve) => setTimeout(resolve, 1_500));
-          let pollResult: unknown;
-          try {
-            const pollResponse = await fetch(`/api/image?jobId=${encodeURIComponent(started.jobId)}`, {
-              cache: "no-store",
-              signal: AbortSignal.timeout(20_000),
-            });
-            pollResult = await readJson(pollResponse);
-          } catch (error) {
-            if (error instanceof DOMException && error.name === "TimeoutError") {
-              console.warn("Timeout ao consultar o estado da imagem; a AKIRA continuará a verificar.", error);
-              continue;
-            }
-            throw error;
-          }
-          if (pollResult && typeof pollResult === "object" && "status" in pollResult && pollResult.status === "processing") {
-            continue;
-          }
-          result = pollResult;
-          break;
-        }
-        if (!result) {
-          throw new Error("A geração demorou mais de 5 minutos. O pedido foi restaurado para poderes tentar novamente.");
-        }
-        if (!result || typeof result !== "object" || !("image" in result) || typeof result.image !== "string") {
-          throw new Error("A AKIRA não devolveu uma imagem válida.");
-        }
-        const resultProviderModel =
-          "providerModel" in result && typeof result.providerModel === "string"
-            ? result.providerModel
-            : undefined;
-        pushMessage(
-          chatId,
-          makeMessage(
-            "assistant",
-            editTarget
-              ? "A imagem editada está pronta."
-              : referenceImageRequest
-                ? "A imagem criada com base na referência está pronta."
-                : "A imagem está pronta.",
-            {
-              image: result.image,
-              ...(resultProviderModel ? { imageProviderModel: resultProviderModel } : {}),
-            },
-          ),
-        );
-        if (!authSnapshot.authenticated) {
+        activeJobPollsRef.current.delete(jobId);
+        const completed = await runPendingJob(chatId, pendingRequest, authSnapshot.historyScope);
+        if (completed && !authSnapshot.authenticated) {
           setAuthSnapshot((current) => {
             if (!current) return current;
             const guestMessagesUsed = current.guestMessagesUsed + 1;
             return { ...current, guestMessagesUsed };
           });
         }
-        if (activeIdRef.current === chatId) {
+        if (completed && activeIdRef.current === chatId) {
           setImgMode(false);
           setEditTarget(null);
         }
       } else {
-        let chatMessage = content || (attachment?.text ? `Analisa o ficheiro ${attachment.name}.` : "Descreve esta imagem em detalhe.");
-        let chatContext = "";
-        if (attachment) {
-          if (attachment.text) {
-            chatContext = `[Conteúdo extraído do ficheiro ${attachment.name}]\n${attachment.text}`;
-          } else if (attachment.dataUrl) {
-            const imageResponse = await fetch("/api/image", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                imageB64: attachment.dataUrl,
-                prompt: content || "Descreve esta imagem em detalhe.",
-              }),
-              signal: AbortSignal.timeout(105_000),
-            });
-            const imageResult = await readJson(imageResponse);
-            if (!imageResult || typeof imageResult !== "object" || !("description" in imageResult) || typeof imageResult.description !== "string") {
-              throw new Error("A AKIRA não devolveu uma análise de imagem válida.");
-            }
-            const imageContext = `[imagem anexada: ${imageResult.description}]`;
-            chatContext = imageContext;
-            setRequestActivities((current) => ({
-              ...current,
-              [chatId!]: {
-                messages: ["A AKIRA está a pensar", "A AKIRA está a organizar as ideias", "A AKIRA está a preparar a resposta"],
-                index: 0,
-                slow: current[chatId!]?.slow ?? false,
-              },
-            }));
-            setChats((current) =>
-              current.map((chat) =>
-                chat.id === chatId
-                  ? {
-                      ...chat,
-                      messages: chat.messages.map((message) =>
-                        message.id === userMessage.id ? { ...message, context: imageContext } : message,
-                      ),
-                    }
-                  : chat,
-              ),
-            );
-          }
-        }
-
         const response = await fetch("/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ message: chatMessage, context: chatContext, history: previousHistory }),
-          signal: AbortSignal.timeout(300_000),
+          body: JSON.stringify(chatRequestBody),
         });
-        const result = await readJson(response);
-        if (!result || typeof result !== "object" || !("reply" in result) || typeof result.reply !== "string") {
-          throw new Error("A AKIRA devolveu uma resposta inválida.");
-        }
-        pushMessage(chatId, makeMessage("assistant", result.reply));
-        if (!authSnapshot.authenticated) {
+        await readJson(response);
+        activeJobPollsRef.current.delete(jobId);
+        const completed = await runPendingJob(chatId, pendingRequest, authSnapshot.historyScope);
+        if (completed && !authSnapshot.authenticated) {
           setAuthSnapshot((current) => {
             if (!current) return current;
             const guestMessagesUsed = current.guestMessagesUsed + 1;
@@ -934,12 +1114,17 @@ export default function Page() {
         }
       }
     } catch (error) {
+      activeJobPollsRef.current.delete(jobId);
+      if (error instanceof TypeError && authSnapshot.historyScope) {
+        await runPendingJob(chatId, pendingRequest, authSnapshot.historyScope);
+        return;
+      }
+      clearPendingJob(
+        chatId,
+        jobId,
+        error instanceof AccountRequiredError || error instanceof UsageLimitError,
+      );
       if (error instanceof AccountRequiredError) {
-        setChats((current) => current.map((chat) =>
-          chat.id === chatId
-            ? { ...chat, messages: chat.messages.filter((message) => message.id !== userMessage.id) }
-            : chat,
-        ));
         if (activeIdRef.current === chatId) {
           setInput(content);
           setAttachment(attachment);
@@ -947,11 +1132,6 @@ export default function Page() {
         setAuthMode("account");
         setAuthMessage(error.message);
       } else if (error instanceof UsageLimitError) {
-        setChats((current) => current.map((chat) =>
-          chat.id === chatId
-            ? { ...chat, messages: chat.messages.filter((message) => message.id !== userMessage.id) }
-            : chat,
-        ));
         if (activeIdRef.current === chatId) {
           setInput(content);
           setAttachment(attachment);
@@ -960,9 +1140,9 @@ export default function Page() {
       } else if (error instanceof DOMException && (error.name === "AbortError" || error.name === "TimeoutError")) {
         if (imageRequest && activeIdRef.current === chatId) {
           setInput(content);
-          setStatus("O processamento da imagem excedeu o limite de 5 minutos. O pedido foi restaurado para poderes tentar novamente.");
+          setStatus("A ligação foi interrompida antes de o pedido arrancar. A conversa foi guardada; volta a enviá-la para tentar novamente.");
         } else if (activeIdRef.current === chatId) {
-          setStatus("A resposta demorou mais de 5 minutos. A AKIRA pode ainda estar a processar o pedido; tenta novamente.");
+          setStatus("A ligação foi interrompida antes de o pedido arrancar. A conversa foi guardada; volta a enviá-la para tentar novamente.");
         }
         if (activeIdRef.current === chatId) setStatusKind("error");
       } else {

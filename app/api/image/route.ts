@@ -154,36 +154,54 @@ export async function POST(req: NextRequest) {
       : [];
 
     const identity = getOrCreateUser(req);
+    const requestedJobId =
+      typeof input.jobId === "string" && /^[0-9a-f-]{36}$/i.test(input.jobId)
+        ? input.jobId
+        : undefined;
+    const imageJob = await createImageJob(identity.userId, requestedJobId);
+    if (!imageJob.created) {
+      const response = NextResponse.json({ jobId: imageJob.jobId }, { status: 202 });
+      if (identity.created) setUserCookie(response, identity.userId);
+      return response;
+    }
     const usage = await consumeImageUsage(identity.userId);
     if (usage.requiresProfile) {
+      await updateImageJob(imageJob.jobId, {
+        status: "failed",
+        error: "Escolhe primeiro o nome que a AKIRA deve usar contigo.",
+      });
       const response = NextResponse.json({ error: "Escolhe primeiro o nome que a AKIRA deve usar contigo." }, { status: 403 });
       if (identity.created) setUserCookie(response, identity.userId);
       return response;
     }
     if (!usage.allowed) {
       if (usage.metric === "images") {
+        const error = `Atingiste o limite diário de ${usage.limit} imagens do plano ${usage.plan}. Tenta novamente amanhã ou muda de plano.`;
+        await updateImageJob(imageJob.jobId, { status: "failed", error });
         const response = NextResponse.json({
           code: "quota_exceeded",
           metric: "images",
           retryAt: usage.retryAt,
-          error: `Atingiste o limite diário de ${usage.limit} imagens do plano ${usage.plan}. Tenta novamente amanhã ou muda de plano.`,
+          error,
         }, { status: 429 });
         if (identity.created) setUserCookie(response, identity.userId);
         return response;
       }
+      const error = usage.requiresAccount
+        ? "As dez mensagens grátis terminaram. Cria a tua conta gratuita para continuares."
+        : `Atingiste o limite de ${usage.limit} mensagens do plano ${usage.plan}.`;
+      await updateImageJob(imageJob.jobId, { status: "failed", error });
       const response = NextResponse.json({
         ...(usage.requiresAccount ? { code: "account_required" } : {}),
         ...(!usage.requiresAccount ? { code: "quota_exceeded", metric: "messages" } : {}),
         ...(usage.retryAt ? { retryAt: usage.retryAt } : {}),
-        error: usage.requiresAccount
-          ? "As dez mensagens grátis terminaram. Cria a tua conta gratuita para continuares."
-          : `Atingiste o limite de ${usage.limit} mensagens do plano ${usage.plan}.`,
+        error,
       }, { status: usage.requiresAccount ? 403 : 429 });
       if (identity.created) setUserCookie(response, identity.userId);
       return response;
     }
 
-    const jobId = await createImageJob(identity.userId);
+    const jobId = imageJob.jobId;
     const generation = editingImage
       ? apiEditImage(prompt, imageToEdit, providerModel)
       : referenceGeneration

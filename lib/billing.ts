@@ -120,6 +120,17 @@ export async function ensureBillingSchema(): Promise<void> {
         );
         CREATE INDEX IF NOT EXISTS akira_image_jobs_updated_at
           ON akira_image_jobs (updated_at);
+        CREATE TABLE IF NOT EXISTS akira_chat_jobs (
+          job_id UUID PRIMARY KEY,
+          user_id UUID NOT NULL REFERENCES akira_billing_accounts(user_id) ON DELETE CASCADE,
+          status TEXT NOT NULL CHECK (status IN ('reserved', 'queued', 'processing', 'complete', 'failed')),
+          request JSONB NOT NULL,
+          result JSONB,
+          error TEXT,
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS akira_chat_jobs_updated_at
+          ON akira_chat_jobs (updated_at);
         CREATE TABLE IF NOT EXISTS akira_message_feedback (
           user_id UUID NOT NULL REFERENCES akira_billing_accounts(user_id) ON DELETE CASCADE,
           message_id UUID NOT NULL,
@@ -143,18 +154,141 @@ export async function ensureBillingSchema(): Promise<void> {
 
 export type ImageJobStatus = "processing" | "complete" | "failed";
 export type ImageJobResult = { image: string; info: string };
+export type ChatJobRequest = {
+  message: string;
+  imageB64?: string;
+  history: { role: "user" | "assistant"; content: string }[];
+  displayName: string;
+};
+export type ChatJobResult = { reply: string; provider: string; context?: string };
+export type ChatJobStatus = "reserved" | "queued" | "processing" | "complete" | "failed";
 
-export async function createImageJob(userId: string): Promise<string> {
+export async function createImageJob(
+  userId: string,
+  requestedJobId?: string,
+): Promise<{ jobId: string; created: boolean }> {
   await ensureBillingSchema();
-  const jobId = randomUUID();
+  const jobId = requestedJobId || randomUUID();
   await billingPool().query(
-    `DELETE FROM akira_image_jobs WHERE updated_at < NOW() - INTERVAL '15 minutes'`,
+    `DELETE FROM akira_image_jobs WHERE updated_at < NOW() - INTERVAL '24 hours'`,
   );
-  await billingPool().query(
-    "INSERT INTO akira_image_jobs (job_id, user_id, status) VALUES ($1, $2, 'processing')",
+  const inserted = await billingPool().query(
+    `INSERT INTO akira_image_jobs (job_id, user_id, status)
+     VALUES ($1, $2, 'processing')
+     ON CONFLICT (job_id) DO NOTHING
+     RETURNING job_id`,
     [jobId, userId],
   );
-  return jobId;
+  if (inserted.rowCount) return { jobId, created: true };
+  const existing = await billingPool().query(
+    "SELECT 1 FROM akira_image_jobs WHERE job_id = $1 AND user_id = $2",
+    [jobId, userId],
+  );
+  if (!existing.rowCount) throw new Error("O identificador da geração já está a ser usado.");
+  return { jobId, created: false };
+}
+
+export async function createChatJob(
+  userId: string,
+  jobId: string,
+  request: ChatJobRequest,
+): Promise<boolean> {
+  await ensureBillingSchema();
+  await billingPool().query(
+    `DELETE FROM akira_chat_jobs WHERE updated_at < NOW() - INTERVAL '24 hours'`,
+  );
+  const inserted = await billingPool().query(
+    `INSERT INTO akira_chat_jobs (job_id, user_id, status, request)
+     VALUES ($1, $2, 'reserved', $3)
+     ON CONFLICT (job_id) DO NOTHING
+     RETURNING job_id`,
+    [jobId, userId, JSON.stringify(request)],
+  );
+  if (inserted.rowCount) return true;
+
+  const existing = await billingPool().query(
+    "SELECT 1 FROM akira_chat_jobs WHERE job_id = $1 AND user_id = $2",
+    [jobId, userId],
+  );
+  if (!existing.rowCount) throw new Error("O identificador do pedido já está a ser usado.");
+  return false;
+}
+
+export async function activateChatJob(jobId: string, userId: string): Promise<void> {
+  await billingPool().query(
+    `UPDATE akira_chat_jobs SET status = 'queued', updated_at = NOW()
+     WHERE job_id = $1 AND user_id = $2 AND status = 'reserved'`,
+    [jobId, userId],
+  );
+}
+
+export async function claimChatJob(
+  jobId: string,
+  userId: string,
+): Promise<ChatJobRequest | null> {
+  await ensureBillingSchema();
+  const result = await billingPool().query<{ request: ChatJobRequest }>(
+    `UPDATE akira_chat_jobs
+     SET status = 'processing', updated_at = NOW()
+     WHERE job_id = $1 AND user_id = $2
+       AND (status = 'queued' OR (status = 'processing' AND updated_at < NOW() - INTERVAL '10 minutes'))
+     RETURNING request`,
+    [jobId, userId],
+  );
+  return result.rows[0]?.request || null;
+}
+
+export async function touchChatJob(jobId: string, userId: string): Promise<void> {
+  await ensureBillingSchema();
+  await billingPool().query(
+    `UPDATE akira_chat_jobs SET updated_at = NOW()
+     WHERE job_id = $1 AND user_id = $2 AND status = 'processing'`,
+    [jobId, userId],
+  );
+}
+
+export async function updateChatJob(
+  jobId: string,
+  update:
+    | { status: "complete"; result: ChatJobResult }
+    | { status: "failed"; error: string },
+): Promise<void> {
+  await ensureBillingSchema();
+  await billingPool().query(
+    `UPDATE akira_chat_jobs
+     SET status = $2, request = '{}'::jsonb, result = $3, error = $4, updated_at = NOW()
+     WHERE job_id = $1`,
+    [
+      jobId,
+      update.status,
+      update.status === "complete" ? JSON.stringify(update.result) : null,
+      update.status === "failed" ? update.error : null,
+    ],
+  );
+}
+
+export async function getChatJob(jobId: string, userId: string): Promise<{
+  status: ChatJobStatus;
+  result: ChatJobResult | null;
+  error: string | null;
+  updatedAt: Date;
+} | null> {
+  await ensureBillingSchema();
+  const result = await billingPool().query<{
+    status: ChatJobStatus;
+    result: ChatJobResult | null;
+    error: string | null;
+    updated_at: Date;
+  }>(
+    `SELECT status, result, error, updated_at
+     FROM akira_chat_jobs
+     WHERE job_id = $1 AND user_id = $2 AND updated_at >= NOW() - INTERVAL '24 hours'`,
+    [jobId, userId],
+  );
+  const job = result.rows[0];
+  return job
+    ? { status: job.status, result: job.result, error: job.error, updatedAt: job.updated_at }
+    : null;
 }
 
 export async function updateImageJob(
@@ -184,7 +318,7 @@ export async function getImageJob(jobId: string, userId: string): Promise<{
   }>(
     `SELECT status, result, error
      FROM akira_image_jobs
-     WHERE job_id = $1 AND user_id = $2 AND updated_at >= NOW() - INTERVAL '15 minutes'`,
+     WHERE job_id = $1 AND user_id = $2 AND updated_at >= NOW() - INTERVAL '24 hours'`,
     [jobId, userId],
   );
   return result.rows[0] || null;

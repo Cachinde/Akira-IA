@@ -16,6 +16,17 @@ export type Chat = {
   title: string;
   messages: Msg[];
   updatedAt: string;
+  pendingRequest?: {
+    jobId: string;
+    kind: "chat" | "image";
+    completionText: string;
+    userMessageId: string;
+    createdAt: string;
+    requestPayload?: {
+      endpoint: "/api/chat" | "/api/image";
+      body: Record<string, unknown>;
+    };
+  };
 };
 
 type StoredChat = Chat & { chatId?: string; historyScope?: string };
@@ -96,6 +107,19 @@ function normalizeChat(chat: Chat, index: number): Chat {
       typeof chat.updatedAt === "string" && !Number.isNaN(Date.parse(chat.updatedAt))
         ? chat.updatedAt
         : lastMessage?.createdAt || now,
+    ...(chat.pendingRequest &&
+    typeof chat.pendingRequest.jobId === "string" &&
+    (chat.pendingRequest.kind === "chat" || chat.pendingRequest.kind === "image") &&
+    typeof chat.pendingRequest.completionText === "string" &&
+    typeof chat.pendingRequest.userMessageId === "string" &&
+    typeof chat.pendingRequest.createdAt === "string" &&
+    !Number.isNaN(Date.parse(chat.pendingRequest.createdAt)) &&
+    (!chat.pendingRequest.requestPayload ||
+      ((chat.pendingRequest.requestPayload.endpoint === "/api/chat" ||
+        chat.pendingRequest.requestPayload.endpoint === "/api/image") &&
+        typeof chat.pendingRequest.requestPayload.body === "object"))
+      ? { pendingRequest: chat.pendingRequest }
+      : {}),
   };
 }
 
@@ -154,6 +178,26 @@ export async function saveChats(historyScope: string, chats: Chat[]): Promise<vo
     transaction.oncomplete = () => resolve();
     transaction.onerror = () => reject(transaction.error || new Error("Não foi possível guardar o histórico."));
     transaction.onabort = () => reject(transaction.error || new Error("A gravação do histórico foi cancelada."));
+  });
+}
+
+export async function saveChat(historyScope: string, chat: Chat): Promise<void> {
+  if (!historyScope) throw new Error("Não foi possível determinar a conta deste histórico.");
+  const database = await openDatabase();
+  return new Promise((resolve, reject) => {
+    const transaction = database.transaction(STORE, "readwrite");
+    const store = transaction.objectStore(STORE);
+    const storageId = `${historyScope}:${chat.id}`;
+    const request = store.get(storageId);
+    request.onsuccess = () => {
+      const saved = request.result as StoredChat | undefined;
+      if (saved && saved.updatedAt > chat.updatedAt) return;
+      store.put({ ...chat, id: storageId, chatId: chat.id, historyScope } satisfies StoredChat);
+    };
+    request.onerror = () => transaction.abort();
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => reject(transaction.error || new Error("Não foi possível guardar a conversa."));
+    transaction.onabort = () => reject(transaction.error || new Error("A gravação da conversa foi cancelada."));
   });
 }
 
