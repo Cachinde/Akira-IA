@@ -202,6 +202,12 @@ function signature(userId: string): string {
   return createHmac("sha256", cookieSecret()).update(userId).digest("base64url");
 }
 
+export function historyScope(userId: string): string {
+  return createHmac("sha256", cookieSecret())
+    .update(`history-scope:${userId}`)
+    .digest("base64url");
+}
+
 function parseUserId(token?: string): string | null {
   if (!token) return null;
   const parts = token.split(".");

@@ -31,7 +31,7 @@ import {
 } from "lucide-react";
 import { ChangeEvent, FormEvent, KeyboardEvent, useEffect, useRef, useState } from "react";
 import Logo from "../components/Logo";
-import { Chat, Msg, loadChats, saveChats } from "../lib/history";
+import { Chat, Msg, clearChats, deleteChat, loadChats, saveChats } from "../lib/history";
 import { extractWebSearchQuery, isImageGenerationRequest } from "../lib/action-intents";
 import {
   CHAT_MESSAGE_CHARACTER_LIMIT,
@@ -42,6 +42,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 type AuthSnapshot = {
+  historyScope: string;
   displayName: string | null;
   email: string | null;
   authenticated: boolean;
@@ -142,10 +143,12 @@ export default function Page() {
   const [chats, setChats] = useState<Chat[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [input, setInput] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [slowRequest, setSlowRequest] = useState(false);
-  const [activityMessages, setActivityMessages] = useState(["A AKIRA está a pensar"]);
-  const [activityIndex, setActivityIndex] = useState(0);
+  const [fileReadingChatKeys, setFileReadingChatKeys] = useState<Set<string>>(() => new Set());
+  const [activeSessionVersion, setActiveSessionVersion] = useState(0);
+  const [pendingChatIds, setPendingChatIds] = useState<Set<string>>(() => new Set());
+  const [requestActivities, setRequestActivities] = useState<
+    Record<string, { messages: string[]; index: number; slow: boolean }>
+  >({});
   const [greetingRun, setGreetingRun] = useState(0);
   const [typedGreeting, setTypedGreeting] = useState("");
   const [typedQuestion, setTypedQuestion] = useState("");
@@ -186,9 +189,16 @@ export default function Page() {
   const shouldFollowMessages = useRef(true);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const imageViewerCloseRef = useRef<HTMLButtonElement>(null);
+  const pendingChatIdsRef = useRef(new Set<string>());
+  const activeIdRef = useRef<string | null>(null);
+  const activeSessionVersionRef = useRef(0);
 
   const activeChat = chats.find((chat) => chat.id === activeId) || null;
   const messages = activeChat?.messages || [];
+  const activeChatPending = !!activeId && pendingChatIds.has(activeId);
+  const activity = activeId ? requestActivities[activeId] : undefined;
+  const activeSessionKey = `${activeSessionVersion}:${activeId ?? "new"}`;
+  const busy = fileReadingChatKeys.has(activeSessionKey);
   const automaticImagePrompt =
     !imgMode &&
     !editTarget &&
@@ -209,8 +219,16 @@ export default function Page() {
   );
 
   useEffect(() => {
+    if (!authReady || !authSnapshot?.historyScope) return;
     let active = true;
-    loadChats()
+    setHistoryReady(false);
+    setHistoryWritable(false);
+    setChats([]);
+    setActiveId(null);
+    activeIdRef.current = null;
+    activeSessionVersionRef.current += 1;
+    setActiveSessionVersion(activeSessionVersionRef.current);
+    loadChats(authSnapshot.historyScope)
       .then((list) => {
         if (!active) return;
         setChats(list);
@@ -225,7 +243,7 @@ export default function Page() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [authReady, authSnapshot?.historyScope]);
 
   useEffect(() => {
     let active = true;
@@ -244,6 +262,7 @@ export default function Page() {
         setStatus(error instanceof Error ? error.message : "Não foi possível carregar a conta.");
         setStatusKind("error");
         setAuthReady(true);
+        setHistoryReady(true);
       });
     const accountResult = new URLSearchParams(window.location.search).get("account");
     const authResult = new URLSearchParams(window.location.search).get("auth");
@@ -339,10 +358,12 @@ export default function Page() {
 
   useEffect(() => {
     if (!historyReady || !historyWritable) return;
-    saveChats(chats).catch((error: unknown) => {
+    const scope = authSnapshot?.historyScope;
+    if (!scope) return;
+    saveChats(scope, chats).catch((error: unknown) => {
       setStorageError(error instanceof Error ? error.message : "Não foi possível guardar o histórico.");
     });
-  }, [chats, historyReady, historyWritable]);
+  }, [authSnapshot?.historyScope, chats, historyReady, historyWritable]);
 
   useEffect(() => {
     shouldFollowMessages.current = true;
@@ -351,25 +372,44 @@ export default function Page() {
   }, [activeId]);
 
   useEffect(() => {
-    if (messages.length === 0 && !busy) return;
+    if (messages.length === 0 && !busy && !activeChatPending) return;
     if (shouldFollowMessages.current && threadRef.current) {
       threadRef.current.scrollTop = threadRef.current.scrollHeight;
     }
-  }, [activeId, messages.length, busy]);
+  }, [activeId, messages.length, busy, activeChatPending]);
 
   useEffect(() => {
-    if (!busy || activityMessages.length < 2 || activityIndex >= activityMessages.length - 1) return;
+    if (!pendingChatIds.size) return;
     const timer = setInterval(() => {
-      setActivityIndex((current) => Math.min(current + 1, activityMessages.length - 1));
+      setRequestActivities((current) => {
+        const next = { ...current };
+        for (const chatId of pendingChatIds) {
+          const state = next[chatId];
+          if (state && state.index < state.messages.length - 1) {
+            next[chatId] = { ...state, index: state.index + 1 };
+          }
+        }
+        return next;
+      });
     }, 2400);
     return () => clearInterval(timer);
-  }, [activityIndex, activityMessages.length, busy]);
+  }, [pendingChatIds]);
 
   useEffect(() => {
     if (!quotaNotice?.retryAt) return;
     const timer = setInterval(() => setCountdownNow(Date.now()), 1000);
     return () => clearInterval(timer);
   }, [quotaNotice?.retryAt]);
+
+  useEffect(() => {
+    if (
+      authSnapshot &&
+      !authSnapshot.authenticated &&
+      authSnapshot.guestMessagesUsed >= authSnapshot.guestMessageLimit
+    ) {
+      setAuthMode("account");
+    }
+  }, [authSnapshot]);
 
   useEffect(() => {
     if (!expandedImage) return;
@@ -424,6 +464,9 @@ export default function Page() {
   }
 
   function newChat() {
+    activeSessionVersionRef.current += 1;
+    setActiveSessionVersion(activeSessionVersionRef.current);
+    activeIdRef.current = null;
     setActiveId(null);
     setGreetingRun((current) => current + 1);
     setInput("");
@@ -440,18 +483,40 @@ export default function Page() {
   function removeChat(id: string) {
     setChats((current) => current.filter((chat) => chat.id !== id));
     if (activeId === id) {
+      activeSessionVersionRef.current += 1;
+      setActiveSessionVersion(activeSessionVersionRef.current);
+      activeIdRef.current = null;
       setActiveId(null);
+      setInput("");
+      setAttachment(null);
+      setImgMode(false);
       setEditTarget(null);
+    }
+    if (authSnapshot?.historyScope) {
+      deleteChat(authSnapshot.historyScope, id).catch((error: unknown) => {
+        setStorageError(error instanceof Error ? error.message : "Não foi possível apagar a conversa.");
+      });
     }
     setChatMenu(null);
   }
 
   function clearHistory() {
-    if (!chats.length || !window.confirm("Apagar todas as conversas guardadas neste navegador?")) return;
+    if (!chats.length || !window.confirm("Apagar todas as conversas desta conta guardadas neste navegador?")) return;
     setChats([]);
+    activeSessionVersionRef.current += 1;
+    setActiveSessionVersion(activeSessionVersionRef.current);
+    activeIdRef.current = null;
     setActiveId(null);
+    setInput("");
+    setAttachment(null);
+    setImgMode(false);
     setEditTarget(null);
-    setStatus("O histórico foi apagado deste navegador.");
+    if (authSnapshot?.historyScope) {
+      clearChats(authSnapshot.historyScope).catch((error: unknown) => {
+        setStorageError(error instanceof Error ? error.message : "Não foi possível apagar o histórico.");
+      });
+    }
+    setStatus("O histórico desta conta foi apagado deste navegador.");
     setStatusKind("success");
   }
 
@@ -475,6 +540,9 @@ export default function Page() {
     const file = event.target.files?.[0];
     event.target.value = "";
     if (!file) return;
+    const targetChatId = activeIdRef.current;
+    const targetSessionVersion = activeSessionVersionRef.current;
+    const targetSessionKey = `${targetSessionVersion}:${targetChatId ?? "new"}`;
     if (imgMode && !file.type.startsWith("image/")) {
       setStatus("No modo de imagem, anexa uma imagem para servir de referência.");
       setStatusKind("error");
@@ -501,7 +569,7 @@ export default function Page() {
         setStatusKind("error");
         return;
       }
-      setBusy(true);
+      setFileReadingChatKeys((current) => new Set(current).add(targetSessionKey));
       setStatus("");
       try {
         const form = new FormData();
@@ -512,15 +580,31 @@ export default function Page() {
           !("name" in result) || typeof result.name !== "string") {
           throw new Error("Não foi possível extrair texto válido do ficheiro.");
         }
-        setAttachment({ name: result.name, text: result.text });
-        setStatus("Ficheiro lido. Envia uma pergunta para a AKIRA o analisar.");
-        setStatusKind("success");
-        inputRef.current?.focus();
+        if (
+          activeIdRef.current === targetChatId &&
+          activeSessionVersionRef.current === targetSessionVersion
+        ) {
+          setAttachment({ name: result.name, text: result.text });
+          setStatus("Ficheiro lido. Envia uma pergunta para a AKIRA o analisar.");
+          setStatusKind("success");
+          inputRef.current?.focus();
+        }
       } catch (error) {
-        setStatus(error instanceof Error ? error.message : "Não foi possível ler o ficheiro.");
-        setStatusKind("error");
+        if (
+          activeIdRef.current === targetChatId &&
+          activeSessionVersionRef.current === targetSessionVersion
+        ) {
+          setStatus(error instanceof Error ? error.message : "Não foi possível ler o ficheiro.");
+          setStatusKind("error");
+        } else {
+          console.error("Não foi possível ler o ficheiro selecionado na conversa anterior.", error);
+        }
       } finally {
-        setBusy(false);
+        setFileReadingChatKeys((current) => {
+          const next = new Set(current);
+          next.delete(targetSessionKey);
+          return next;
+        });
       }
       return;
     }
@@ -532,18 +616,37 @@ export default function Page() {
     const reader = new FileReader();
     reader.onload = () => {
       if (typeof reader.result !== "string" || !reader.result.startsWith("data:image/")) {
-        setStatus("Não foi possível ler esta imagem.");
-        setStatusKind("error");
+        if (
+          activeIdRef.current === targetChatId &&
+          activeSessionVersionRef.current === targetSessionVersion
+        ) {
+          setStatus("Não foi possível ler esta imagem.");
+          setStatusKind("error");
+        } else {
+          console.error("Não foi possível ler a imagem selecionada na conversa anterior.");
+        }
         return;
       }
-      setAttachment({ name: file.name, dataUrl: reader.result });
-      setStatus("");
-      setStatusKind("");
-      inputRef.current?.focus();
+      if (
+        activeIdRef.current === targetChatId &&
+        activeSessionVersionRef.current === targetSessionVersion
+      ) {
+        setAttachment({ name: file.name, dataUrl: reader.result });
+        setStatus("");
+        setStatusKind("");
+        inputRef.current?.focus();
+      }
     };
     reader.onerror = () => {
-      setStatus("Não foi possível ler esta imagem.");
-      setStatusKind("error");
+      if (
+        activeIdRef.current === targetChatId &&
+        activeSessionVersionRef.current === targetSessionVersion
+      ) {
+        setStatus("Não foi possível ler esta imagem.");
+        setStatusKind("error");
+      } else {
+        console.error("Não foi possível ler a imagem selecionada na conversa anterior.");
+      }
     };
     reader.readAsDataURL(file);
   }
@@ -591,13 +694,17 @@ export default function Page() {
       return;
     }
 
-    let chatId = activeId;
+    let chatId = activeIdRef.current ?? activeId;
     if (!chatId) {
       chatId = uid();
       const now = new Date().toISOString();
       setChats((current) => [{ id: chatId!, title: "Nova conversa", messages: [], updatedAt: now }, ...current]);
+      activeIdRef.current = chatId;
       setActiveId(chatId);
     }
+    if (pendingChatIdsRef.current.has(chatId)) return;
+    pendingChatIdsRef.current.add(chatId);
+    setPendingChatIds(new Set(pendingChatIdsRef.current));
 
     const currentChat = chats.find((chat) => chat.id === chatId);
     const previousHistory = (currentChat?.messages || []).map((message) => ({
@@ -655,11 +762,18 @@ export default function Page() {
                   "A AKIRA está a estruturar a resposta",
                   "A AKIRA está a compor a resposta",
                 ];
-    setActivityMessages(nextActivityMessages);
-    setActivityIndex(0);
-    setBusy(true);
-    setSlowRequest(false);
-    const slowWaitTimer = setTimeout(() => setSlowRequest(true), 8_000);
+    setRequestActivities((current) => ({
+      ...current,
+      [chatId]: { messages: nextActivityMessages, index: 0, slow: false },
+    }));
+    const slowWaitTimer = setTimeout(() => {
+      setRequestActivities((current) => ({
+        ...current,
+        [chatId!]: current[chatId!]
+          ? { ...current[chatId!], slow: true }
+          : { messages: nextActivityMessages, index: 0, slow: true },
+      }));
+    }, 8_000);
     setStatus("");
     setStatusKind("");
     setToolsOpen(false);
@@ -745,12 +859,16 @@ export default function Page() {
           ),
         );
         if (!authSnapshot.authenticated) {
-          const guestMessagesUsed = authSnapshot.guestMessagesUsed + 1;
-          setAuthSnapshot((current) => current ? { ...current, guestMessagesUsed } : current);
-          if (guestMessagesUsed >= authSnapshot.guestMessageLimit) setAuthMode("account");
+          setAuthSnapshot((current) => {
+            if (!current) return current;
+            const guestMessagesUsed = current.guestMessagesUsed + 1;
+            return { ...current, guestMessagesUsed };
+          });
         }
-        setImgMode(false);
-        setEditTarget(null);
+        if (activeIdRef.current === chatId) {
+          setImgMode(false);
+          setEditTarget(null);
+        }
       } else {
         let chatMessage = content || (attachment?.text ? `Analisa o ficheiro ${attachment.name}.` : "Descreve esta imagem em detalhe.");
         let chatContext = "";
@@ -773,8 +891,14 @@ export default function Page() {
             }
             const imageContext = `[imagem anexada: ${imageResult.description}]`;
             chatContext = imageContext;
-            setActivityMessages(["A AKIRA está a pensar", "A AKIRA está a organizar as ideias", "A AKIRA está a preparar a resposta"]);
-            setActivityIndex(0);
+            setRequestActivities((current) => ({
+              ...current,
+              [chatId!]: {
+                messages: ["A AKIRA está a pensar", "A AKIRA está a organizar as ideias", "A AKIRA está a preparar a resposta"],
+                index: 0,
+                slow: current[chatId!]?.slow ?? false,
+              },
+            }));
             setChats((current) =>
               current.map((chat) =>
                 chat.id === chatId
@@ -802,9 +926,11 @@ export default function Page() {
         }
         pushMessage(chatId, makeMessage("assistant", result.reply));
         if (!authSnapshot.authenticated) {
-          const guestMessagesUsed = authSnapshot.guestMessagesUsed + 1;
-          setAuthSnapshot((current) => current ? { ...current, guestMessagesUsed } : current);
-          if (guestMessagesUsed >= authSnapshot.guestMessageLimit) setAuthMode("account");
+          setAuthSnapshot((current) => {
+            if (!current) return current;
+            const guestMessagesUsed = current.guestMessagesUsed + 1;
+            return { ...current, guestMessagesUsed };
+          });
         }
       }
     } catch (error) {
@@ -814,8 +940,10 @@ export default function Page() {
             ? { ...chat, messages: chat.messages.filter((message) => message.id !== userMessage.id) }
             : chat,
         ));
-        setInput(content);
-        setAttachment(attachment);
+        if (activeIdRef.current === chatId) {
+          setInput(content);
+          setAttachment(attachment);
+        }
         setAuthMode("account");
         setAuthMessage(error.message);
       } else if (error instanceof UsageLimitError) {
@@ -824,27 +952,36 @@ export default function Page() {
             ? { ...chat, messages: chat.messages.filter((message) => message.id !== userMessage.id) }
             : chat,
         ));
-        setInput(content);
-        setAttachment(attachment);
+        if (activeIdRef.current === chatId) {
+          setInput(content);
+          setAttachment(attachment);
+        }
         setQuotaNotice(error);
       } else if (error instanceof DOMException && (error.name === "AbortError" || error.name === "TimeoutError")) {
-        if (imageRequest) {
+        if (imageRequest && activeIdRef.current === chatId) {
           setInput(content);
           setStatus("O processamento da imagem excedeu o limite de 5 minutos. O pedido foi restaurado para poderes tentar novamente.");
-        } else {
+        } else if (activeIdRef.current === chatId) {
           setStatus("A resposta demorou mais de 5 minutos. A AKIRA pode ainda estar a processar o pedido; tenta novamente.");
         }
-        setStatusKind("error");
+        if (activeIdRef.current === chatId) setStatusKind("error");
       } else {
-        if (imageRequest) setInput(content);
-        setStatus(error instanceof Error ? error.message : "O pedido à AKIRA falhou.");
-        setStatusKind("error");
+        if (activeIdRef.current === chatId) {
+          if (imageRequest) setInput(content);
+          setStatus(error instanceof Error ? error.message : "O pedido à AKIRA falhou.");
+          setStatusKind("error");
+        }
       }
     } finally {
       clearTimeout(slowWaitTimer);
-      setSlowRequest(false);
-      setBusy(false);
-      inputRef.current?.focus();
+      pendingChatIdsRef.current.delete(chatId);
+      setPendingChatIds(new Set(pendingChatIdsRef.current));
+      setRequestActivities((current) => {
+        const next = { ...current };
+        delete next[chatId!];
+        return next;
+      });
+      if (activeIdRef.current === chatId) inputRef.current?.focus();
     }
   }
 
@@ -1077,7 +1214,20 @@ export default function Page() {
             <div className={`history-entry ${activeId === chat.id ? "active" : ""}`} key={chat.id}>
               <button
                 className="hist-item"
-                onClick={() => { setActiveId(chat.id); setEditTarget(null); setSideOpen(false); setStatus(""); setStatusKind(""); }}
+                onClick={() => {
+                  activeSessionVersionRef.current += 1;
+                  setActiveSessionVersion(activeSessionVersionRef.current);
+                  activeIdRef.current = chat.id;
+                  setActiveId(chat.id);
+                  setInput("");
+                  setAttachment(null);
+                  setImgMode(false);
+                  setEditTarget(null);
+                  setToolsOpen(false);
+                  setSideOpen(false);
+                  setStatus("");
+                  setStatusKind("");
+                }}
                 title={chat.title}
               >
                 <span className="history-item-title">{chat.title}</span>
@@ -1266,7 +1416,7 @@ export default function Page() {
                       )}
                       {message.image && (
                         <>
-                          <button className="icon-button" onClick={() => editImage(message)} disabled={busy} aria-label="Editar imagem com um pedido" title="Editar imagem">
+                          <button className="icon-button" onClick={() => editImage(message)} disabled={busy || activeChatPending} aria-label="Editar imagem com um pedido" title="Editar imagem">
                             <Pencil size={14} /><span>Editar</span>
                           </button>
                           <button className="icon-button" onClick={() => downloadImage(message)} aria-label="Descarregar imagem" title="Descarregar imagem">
@@ -1303,14 +1453,14 @@ export default function Page() {
                   </div>
                 </article>
               ))}
-              {busy && (
+              {(activeChatPending || busy) && (
                 <div className="msg assistant">
                   <div className="assistant-mark"><Logo size={24} /></div>
                   <div className="typing" aria-live="polite">
                     <LoaderCircle size={15} className="spin" aria-hidden="true" />
-                    <span>{activityMessages[activityIndex]}</span>
+                    <span>{busy ? "A ler o ficheiro" : activity?.messages[activity.index] || "A AKIRA está a pensar"}</span>
                     <span className="typing-dots" aria-hidden="true"><i /><i /><i /></span>
-                    {slowRequest && (
+                    {!busy && activity?.slow && (
                       <span className="typing-note">O pedido está a demorar. Mantém esta página aberta; a AKIRA continua a processá-lo.</span>
                     )}
                   </div>
@@ -1398,7 +1548,7 @@ export default function Page() {
                     : "Escreve a tua mensagem…"
               }
               value={input}
-              disabled={!historyReady || busy}
+              disabled={!historyReady || busy || activeChatPending}
               onChange={(event) => setInput(event.target.value)}
               onKeyDown={onKeyDown}
               aria-label="A tua mensagem"
@@ -1422,7 +1572,7 @@ export default function Page() {
                   className="icon-btn attach-btn"
                   aria-label={imgMode ? "Anexar imagem de referência" : "Anexar imagem ou documento"}
                   onClick={() => fileRef.current?.click()}
-                  disabled={!historyReady || busy || Boolean(editTarget)}
+                  disabled={!historyReady || busy || activeChatPending || Boolean(editTarget)}
                 >
                   <Paperclip size={17} />
                 </button>
@@ -1432,7 +1582,7 @@ export default function Page() {
                   accept={imgMode ? "image/png,image/jpeg,image/webp" : "image/*,.txt,.md,.markdown,.csv,.json,.pdf,.docx"}
                   hidden
                   onChange={onFile}
-                  disabled={busy || Boolean(editTarget)}
+                  disabled={busy || activeChatPending || Boolean(editTarget)}
                 />
                 <button
                   type="button"
@@ -1449,10 +1599,10 @@ export default function Page() {
                 <button
                   type="submit"
                   className="send-btn"
-                  disabled={!historyReady || busy || (!input.trim() && !attachment)}
+                  disabled={!historyReady || busy || activeChatPending || (!input.trim() && !attachment)}
                   aria-label={imgMode || automaticImagePrompt ? "Gerar imagem" : "Enviar mensagem"}
                 >
-                  {busy ? <LoaderCircle className="spin" size={16} /> : imgMode || automaticImagePrompt ? <ImagePlus size={16} /> : <Send size={15} />}
+                  {busy || activeChatPending ? <LoaderCircle className="spin" size={16} /> : imgMode || automaticImagePrompt ? <ImagePlus size={16} /> : <Send size={15} />}
                 </button>
               </div>
             </div>

@@ -196,7 +196,11 @@ function objectOutput<T>(data: unknown, name: string): T {
   return output as T;
 }
 
-export async function apiChat(message: string, history: ChatMsg[]): Promise<ChatResult> {
+export async function apiChat(
+  message: string,
+  history: ChatMsg[],
+  displayName: string,
+): Promise<ChatResult> {
   const client = await chatSpaceClient();
   const gradioHistory: GradioMessage[] = history.slice(-12).map(({ role, content }) => ({
     role,
@@ -204,33 +208,25 @@ export async function apiChat(message: string, history: ChatMsg[]): Promise<Chat
     metadata: null,
     options: null,
   }));
-  const result = await client.predict("/_send", [message, gradioHistory, null]);
-  const data: unknown = result.data;
-  if (!Array.isArray(data) || data.length === 0) {
-    throw new Error("A AKIRA devolveu uma resposta de conversa inválida.");
-  }
-  const output: unknown = data[0];
-  if (!Array.isArray(output)) {
-    throw new Error("A AKIRA devolveu um histórico de conversa inválido.");
-  }
-  const lastAssistantMessage = [...output].reverse().find(
-    (item) => item && typeof item === "object" && (item as Record<string, unknown>).role === "assistant",
-  ) as Record<string, unknown> | undefined;
-  const content = lastAssistantMessage?.content;
-  const reply = (typeof content === "string"
-    ? content
-    : Array.isArray(content)
-      ? content
-          .filter((part): part is { text: string } => !!part && typeof part === "object" && typeof (part as Record<string, unknown>).text === "string")
-          .map((part) => part.text)
-          .join("\n")
-      : "").trim();
+  const result = await client.predict("/chat", [
+    message,
+    gradioHistory,
+    JSON.stringify({ display_name: displayName }),
+  ]);
+  const output = objectOutput<{ reply?: unknown; provider?: unknown }>(result.data, "conversa");
+  const reply = typeof output.reply === "string" ? output.reply.trim() : "";
 
+  if (output.provider === "error") {
+    throw new Error(reply || "A AKIRA não conseguiu processar o contexto da conversa.");
+  }
   if (!reply) {
     throw new Error("A AKIRA não devolveu uma resposta de texto.");
   }
 
-  return { reply, provider: "AKIRA-SOFTEDGE" };
+  return {
+    reply,
+    provider: typeof output.provider === "string" ? output.provider : "AKIRA-SOFTEDGE",
+  };
 }
 
 export async function apiWebSearch(query: string): Promise<WebSearchResult> {

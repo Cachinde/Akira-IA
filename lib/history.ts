@@ -18,9 +18,10 @@ export type Chat = {
   updatedAt: string;
 };
 
+type StoredChat = Chat & { chatId?: string; historyScope?: string };
+
 const DATABASE = "akira-bot-ui";
 const STORE = "conversations";
-const LEGACY_STORAGE_KEY = "akira_chats_v1";
 let databasePromise: Promise<IDBDatabase> | undefined;
 
 function openDatabase(): Promise<IDBDatabase> {
@@ -105,50 +106,91 @@ function readRequest<T>(request: IDBRequest<T>): Promise<T> {
   });
 }
 
-export async function loadChats(): Promise<Chat[]> {
+export async function loadChats(historyScope: string): Promise<Chat[]> {
+  if (!historyScope) throw new Error("Não foi possível determinar a conta deste histórico.");
   const database = await openDatabase();
   const saved = await readRequest<unknown[]>(
     database.transaction(STORE, "readonly").objectStore(STORE).getAll(),
   );
-  const chats = saved.filter(isChat).map(normalizeChat);
-  if (chats.length) {
-    return chats.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-  }
-
-  const legacy = localStorage.getItem(LEGACY_STORAGE_KEY);
-  if (!legacy) return [];
-  let oldChats: unknown;
-  try {
-    oldChats = JSON.parse(legacy);
-  } catch {
-    throw new Error("O histórico antigo está danificado e não pôde ser importado.");
-  }
-
-  const imported = Array.isArray(oldChats) ? oldChats.filter(isChat).map(normalizeChat) : [];
-  if (!imported.length) return [];
-  await saveChats(imported);
-  localStorage.removeItem(LEGACY_STORAGE_KEY);
-  return imported.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  const chats = saved
+    .filter(
+      (value): value is StoredChat =>
+        isChat(value) &&
+        !!value &&
+        typeof value === "object" &&
+        (value as StoredChat).historyScope === historyScope,
+    )
+    .map((chat, index) =>
+      normalizeChat(
+        { ...chat, id: typeof chat.chatId === "string" ? chat.chatId : chat.id },
+        index,
+      ),
+    );
+  return chats.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }
 
-export async function saveChats(chats: Chat[]): Promise<void> {
+export async function saveChats(historyScope: string, chats: Chat[]): Promise<void> {
+  if (!historyScope) throw new Error("Não foi possível determinar a conta deste histórico.");
   const database = await openDatabase();
   return new Promise((resolve, reject) => {
     const transaction = database.transaction(STORE, "readwrite");
     const store = transaction.objectStore(STORE);
-    store.clear();
-    for (const chat of chats) store.put(chat);
+    const getAll = store.getAll();
+    getAll.onsuccess = () => {
+      const savedById = new Map(
+        (getAll.result as StoredChat[])
+          .filter((chat) => chat.historyScope === historyScope)
+          .map((chat) => [chat.chatId || chat.id, chat]),
+      );
+      for (const chat of chats) {
+        const saved = savedById.get(chat.id);
+        if (saved && saved.updatedAt > chat.updatedAt) continue;
+        const storageId = `${historyScope}:${chat.id}`;
+        if (saved && saved.id !== storageId) store.delete(saved.id);
+        store.put({ ...chat, id: storageId, chatId: chat.id, historyScope } satisfies StoredChat);
+      }
+    };
+    getAll.onerror = () => transaction.abort();
     transaction.oncomplete = () => resolve();
     transaction.onerror = () => reject(transaction.error || new Error("Não foi possível guardar o histórico."));
     transaction.onabort = () => reject(transaction.error || new Error("A gravação do histórico foi cancelada."));
   });
 }
 
-export async function clearChats(): Promise<void> {
+export async function deleteChat(historyScope: string, chatId: string): Promise<void> {
+  if (!historyScope) throw new Error("Não foi possível determinar a conta deste histórico.");
   const database = await openDatabase();
   return new Promise((resolve, reject) => {
     const transaction = database.transaction(STORE, "readwrite");
-    transaction.objectStore(STORE).clear();
+    const store = transaction.objectStore(STORE);
+    const request = store.getAll();
+    request.onsuccess = () => {
+      for (const chat of request.result as StoredChat[]) {
+        if (chat.historyScope === historyScope && (chat.chatId || chat.id) === chatId) {
+          store.delete(chat.id);
+        }
+      }
+    };
+    request.onerror = () => transaction.abort();
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => reject(transaction.error || new Error("Não foi possível apagar a conversa."));
+    transaction.onabort = () => reject(transaction.error || new Error("A remoção da conversa foi cancelada."));
+  });
+}
+
+export async function clearChats(historyScope: string): Promise<void> {
+  if (!historyScope) throw new Error("Não foi possível determinar a conta deste histórico.");
+  const database = await openDatabase();
+  return new Promise((resolve, reject) => {
+    const transaction = database.transaction(STORE, "readwrite");
+    const store = transaction.objectStore(STORE);
+    const request = store.getAll();
+    request.onsuccess = () => {
+      for (const chat of request.result as StoredChat[]) {
+        if (chat.historyScope === historyScope) store.delete(chat.id);
+      }
+    };
+    request.onerror = () => transaction.abort();
     transaction.oncomplete = () => resolve();
     transaction.onerror = () => reject(transaction.error || new Error("Não foi possível limpar o histórico."));
     transaction.onabort = () => reject(transaction.error || new Error("A limpeza do histórico foi cancelada."));

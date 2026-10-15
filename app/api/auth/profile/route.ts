@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthSnapshot, saveDisplayName } from "@/lib/auth";
-import { getOrCreateUser, setUserCookie } from "@/lib/billing";
+import { getOrCreateUser, historyScope, setUserCookie } from "@/lib/billing";
 
 export const runtime = "nodejs";
 
@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
     const identity = getOrCreateUser(request);
     await saveDisplayName(identity.userId, displayName);
     const snapshot = await getAuthSnapshot(identity.userId);
-    const response = NextResponse.json(snapshot);
+    const response = NextResponse.json({ ...snapshot, historyScope: historyScope(identity.userId) });
     if (identity.created) setUserCookie(response, identity.userId);
     return response;
   } catch (error) {

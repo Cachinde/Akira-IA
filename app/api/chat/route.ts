@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { apiChat, apiWebSearch } from "@/lib/space";
 import { extractWebSearchQuery } from "@/lib/action-intents";
 import { consumeUsage, getOrCreateUser, setUserCookie } from "@/lib/billing";
+import { getAuthSnapshot } from "@/lib/auth";
 import {
   CHAT_MESSAGE_CHARACTER_LIMIT,
   CHAT_REQUEST_CHARACTER_LIMIT,
@@ -78,6 +79,16 @@ export async function POST(req: NextRequest) {
       if (identity.created) setUserCookie(response, identity.userId);
       return response;
     }
+    const authSnapshot = await getAuthSnapshot(identity.userId);
+    const displayName = authSnapshot.displayName?.trim();
+    if (!displayName) {
+      const response = NextResponse.json(
+        { code: "profile_required", error: "Escolhe primeiro o nome que a AKIRA deve usar contigo." },
+        { status: 403 },
+      );
+      if (identity.created) setUserCookie(response, identity.userId);
+      return response;
+    }
     const searchQuery = extractWebSearchQuery(message);
     const chatResult = searchQuery
       ? await (async () => {
@@ -90,7 +101,7 @@ export async function POST(req: NextRequest) {
             provider: "web_search",
           };
         })()
-      : await apiChat(requestMessage, history);
+      : await apiChat(requestMessage, history, displayName);
     const response = NextResponse.json(chatResult);
     if (identity.created) setUserCookie(response, identity.userId);
     return response;
