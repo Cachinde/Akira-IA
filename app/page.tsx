@@ -197,6 +197,7 @@ export default function Page() {
   const [fileReadingChatKeys, setFileReadingChatKeys] = useState<Set<string>>(() => new Set());
   const [activeSessionVersion, setActiveSessionVersion] = useState(0);
   const [pendingChatIds, setPendingChatIds] = useState<Set<string>>(() => new Set());
+  const [queuedCounts, setQueuedCounts] = useState<Record<string, number>>({});
   const [requestActivities, setRequestActivities] = useState<
     Record<string, { messages: string[]; index: number; slow: boolean }>
   >({});
@@ -248,6 +249,8 @@ export default function Page() {
   const imageViewerCloseRef = useRef<HTMLButtonElement>(null);
   const pendingChatIdsRef = useRef(new Set<string>());
   const activeJobPollsRef = useRef(new Set<string>());
+  const queuedMessagesRef = useRef<Record<string, string[]>>({});
+  const draftsRef = useRef<Record<string, { input: string; imgMode: boolean }>>({});
   const activeIdRef = useRef<string | null>(null);
   const activeSessionVersionRef = useRef(0);
   const chatsRef = useRef(chats);
@@ -256,6 +259,7 @@ export default function Page() {
   const activeChat = chats.find((chat) => chat.id === activeId) || null;
   const messages = activeChat?.messages || [];
   const activeChatPending = !!activeId && pendingChatIds.has(activeId);
+  const activeQueuedCount = activeId ? queuedCounts[activeId] || 0 : 0;
   const activity = activeId ? requestActivities[activeId] : undefined;
   const activeSessionKey = `${activeSessionVersion}:${activeId ?? "new"}`;
   const busy = fileReadingChatKeys.has(activeSessionKey);
@@ -286,6 +290,9 @@ export default function Page() {
     setChats([]);
     setActiveId(null);
     activeIdRef.current = null;
+    draftsRef.current = {};
+    queuedMessagesRef.current = {};
+    setQueuedCounts({});
     activeSessionVersionRef.current += 1;
     setActiveSessionVersion(activeSessionVersionRef.current);
     loadChats(authSnapshot.historyScope)
@@ -638,6 +645,8 @@ export default function Page() {
   function reformulateBlockedPrompt() {
     if (!moderationNotice) return;
     const { chatId, prompt, imageRequest, editRequest } = moderationNotice;
+    stashDraft();
+    delete draftsRef.current[chatId];
     const chat = chatsRef.current.find((item) => item.id === chatId);
     const userMessage = chat?.messages[chat.messages.length - 1];
     activeSessionVersionRef.current += 1;
@@ -753,15 +762,55 @@ export default function Page() {
     }
   }
 
+  function stashDraft() {
+    const key = activeIdRef.current ?? "__new__";
+    if (input.trim() || imgMode) draftsRef.current[key] = { input, imgMode };
+    else delete draftsRef.current[key];
+  }
+
+  function restoreDraft(key: string | null) {
+    const draft = draftsRef.current[key ?? "__new__"];
+    setInput(draft?.input ?? "");
+    setImgMode(draft?.imgMode ?? false);
+  }
+
+  function updateQueue(chatId: string, updater: (queue: string[]) => string[]) {
+    const nextQueue = updater(queuedMessagesRef.current[chatId] || []);
+    if (nextQueue.length) {
+      queuedMessagesRef.current = { ...queuedMessagesRef.current, [chatId]: nextQueue };
+    } else {
+      const next = { ...queuedMessagesRef.current };
+      delete next[chatId];
+      queuedMessagesRef.current = next;
+    }
+    setQueuedCounts((current) => {
+      const next = { ...current };
+      const size = queuedMessagesRef.current[chatId]?.length || 0;
+      if (size) next[chatId] = size;
+      else delete next[chatId];
+      return next;
+    });
+  }
+
+  function flushQueuedMessage(chatId: string) {
+    const queue = queuedMessagesRef.current[chatId];
+    if (!queue?.length) return;
+    const [next, ...rest] = queue;
+    updateQueue(chatId, () => rest);
+    window.setTimeout(() => {
+      void send(next, chatId);
+    }, 0);
+  }
+
   function newChat() {
+    stashDraft();
     activeSessionVersionRef.current += 1;
     setActiveSessionVersion(activeSessionVersionRef.current);
     activeIdRef.current = null;
     setActiveId(null);
     setGreetingRun((current) => current + 1);
-    setInput("");
+    restoreDraft(null);
     setAttachment(null);
-    setImgMode(false);
     setEditTarget(null);
     setToolsOpen(false);
     setStatus("");
@@ -771,6 +820,8 @@ export default function Page() {
   }
 
   function removeChat(id: string) {
+    delete draftsRef.current[id];
+    if (queuedMessagesRef.current[id]) updateQueue(id, () => []);
     const remainingChats = chatsRef.current.filter((chat) => chat.id !== id);
     chatsRef.current = remainingChats;
     setChats(remainingChats);
@@ -779,9 +830,8 @@ export default function Page() {
       setActiveSessionVersion(activeSessionVersionRef.current);
       activeIdRef.current = null;
       setActiveId(null);
-      setInput("");
+      restoreDraft(null);
       setAttachment(null);
-      setImgMode(false);
       setEditTarget(null);
     }
     if (authSnapshot?.historyScope) {
@@ -796,13 +846,15 @@ export default function Page() {
     if (!chats.length || !window.confirm("Apagar todas as conversas desta conta guardadas neste navegador?")) return;
     chatsRef.current = [];
     setChats([]);
+    draftsRef.current = {};
+    queuedMessagesRef.current = {};
+    setQueuedCounts({});
     activeSessionVersionRef.current += 1;
     setActiveSessionVersion(activeSessionVersionRef.current);
     activeIdRef.current = null;
     setActiveId(null);
-    setInput("");
+    restoreDraft(null);
     setAttachment(null);
-    setImgMode(false);
     setEditTarget(null);
     if (authSnapshot?.historyScope) {
       clearChats(authSnapshot.historyScope).catch((error: unknown) => {
@@ -944,23 +996,27 @@ export default function Page() {
     reader.readAsDataURL(file);
   }
 
-  async function send(text?: string) {
+  async function send(text?: string, targetChatId?: string) {
+    const backgroundSend = Boolean(targetChatId);
     const rawContent = text ?? input;
     const content = rawContent.trim();
     const automaticImageRequest =
+      !backgroundSend &&
       !imgMode &&
       !editTarget &&
       isImageGenerationRequest(content) &&
       (!attachment || Boolean(attachment.dataUrl));
-    const imageRequest = imgMode || Boolean(editTarget) || automaticImageRequest;
+    const imageRequest = !backgroundSend && (imgMode || Boolean(editTarget) || automaticImageRequest);
     const referenceImageRequest = imageRequest && !editTarget && Boolean(attachment?.dataUrl);
     const characterLimit = imageRequest ? IMAGE_GENERATION_CHARACTER_LIMIT : CHAT_MESSAGE_CHARACTER_LIMIT;
     if (rawContent.length > characterLimit) {
-      if (text !== undefined) setInput(rawContent);
-      inputRef.current?.focus();
+      if (!backgroundSend && text !== undefined) setInput(rawContent);
+      if (!backgroundSend) inputRef.current?.focus();
       return;
     }
-    if ((!content && !attachment) || busy) return;
+    if (!backgroundSend && !content && !attachment) return;
+    if (backgroundSend && !content) return;
+    if (busy) return;
     if (!authReady) return;
     if (!authSnapshot?.displayName) {
       setAuthMode("profile");
@@ -987,15 +1043,44 @@ export default function Page() {
       return;
     }
 
-    let chatId = activeIdRef.current ?? activeId;
-    if (!chatId) {
-      chatId = uid();
-      const now = new Date().toISOString();
-      setChats((current) => [{ id: chatId!, title: "Nova conversa", messages: [], updatedAt: now }, ...current]);
-      activeIdRef.current = chatId;
-      setActiveId(chatId);
+    let chatId: string;
+    if (targetChatId) {
+      if (!chatsRef.current.some((chat) => chat.id === targetChatId)) return;
+      chatId = targetChatId;
+    } else {
+      const currentId = activeIdRef.current ?? activeId;
+      if (currentId) {
+        chatId = currentId;
+      } else {
+        chatId = uid();
+        const now = new Date().toISOString();
+        const newChatEntry: Chat = { id: chatId, title: "Nova conversa", messages: [], updatedAt: now };
+        const nextChats = [newChatEntry, ...chatsRef.current];
+        chatsRef.current = nextChats;
+        setChats(nextChats);
+        activeIdRef.current = chatId;
+        setActiveId(chatId);
+        delete draftsRef.current["__new__"];
+      }
     }
-    if (pendingChatIdsRef.current.has(chatId)) return;
+    if (pendingChatIdsRef.current.has(chatId)) {
+      if (backgroundSend) {
+        updateQueue(chatId, (queue) => [content, ...queue]);
+        return;
+      }
+      if (content && !attachment && !imgMode && !editTarget && !automaticImageRequest) {
+        updateQueue(chatId, (queue) => [...queue, content]);
+        delete draftsRef.current[chatId];
+        setInput("");
+        setStatus("Mensagem na fila. A AKIRA responde assim que terminar a resposta atual.");
+        setStatusKind("success");
+        inputRef.current?.focus();
+      } else {
+        setStatus("Espera pela resposta atual antes de enviares imagens ou ficheiros.");
+        setStatusKind("error");
+      }
+      return;
+    }
     pendingChatIdsRef.current.add(chatId);
     setPendingChatIds(new Set(pendingChatIdsRef.current));
 
@@ -1005,26 +1090,37 @@ export default function Page() {
       role: message.role,
       content: message.context ? `${message.content}\n\n${message.context}` : message.content,
     }));
-    const visibleContent = editTarget
-      ? `Edita a imagem: ${content}`
-      : referenceImageRequest
-        ? `Cria uma imagem com base na referência: ${content}`
-      : imgMode
-        ? `Cria uma imagem: ${content}`
-        : content || (attachment?.text ? `Analisa o ficheiro ${attachment.name}.` : "Descreve esta imagem.");
-    const userMessage = makeMessage("user", visibleContent, {
-      attachment: editTarget?.image || attachment?.dataUrl,
-      attachmentName: editTarget ? "Imagem original" : attachment?.name,
-      context: attachment?.text,
-    });
+    const visibleContent = backgroundSend
+      ? content
+      : editTarget
+        ? `Edita a imagem: ${content}`
+        : referenceImageRequest
+          ? `Cria uma imagem com base na referência: ${content}`
+        : imgMode
+          ? `Cria uma imagem: ${content}`
+          : content || (attachment?.text ? `Analisa o ficheiro ${attachment.name}.` : "Descreve esta imagem.");
+    const userMessage = makeMessage(
+      "user",
+      visibleContent,
+      backgroundSend
+        ? {}
+        : {
+            attachment: editTarget?.image || attachment?.dataUrl,
+            attachmentName: editTarget ? "Imagem original" : attachment?.name,
+            context: attachment?.text,
+          },
+    );
 
     const jobId = uid();
     const chatMessage =
       content ||
-      (attachment?.text ? `Analisa o ficheiro ${attachment.name}.` : "Descreve esta imagem em detalhe.");
-    const chatContext = attachment?.text
-      ? `[Conteúdo extraído do ficheiro ${attachment.name}]\n${attachment.text}`
-      : "";
+      (!backgroundSend && attachment?.text
+        ? `Analisa o ficheiro ${attachment.name}.`
+        : "Descreve esta imagem em detalhe.");
+    const chatContext =
+      !backgroundSend && attachment?.text
+        ? `[Conteúdo extraído do ficheiro ${attachment.name}]\n${attachment.text}`
+        : "";
     const imageRequestBody: Record<string, unknown> = {
       jobId,
       ...(editTarget
@@ -1044,7 +1140,7 @@ export default function Page() {
       jobId,
       message: chatMessage,
       context: chatContext,
-      ...(attachment?.dataUrl ? { imageB64: attachment.dataUrl } : {}),
+      ...(!backgroundSend && attachment?.dataUrl ? { imageB64: attachment.dataUrl } : {}),
       history: previousHistory,
     };
     const { imageB64: _imageBytes, ...imageRecoveryBody } = imageRequestBody;
@@ -1052,7 +1148,7 @@ export default function Page() {
     const pendingRequest: NonNullable<Chat["pendingRequest"]> = {
       jobId,
       kind: imageRequest ? "image" : "chat",
-      completionText: editTarget
+      completionText: !backgroundSend && editTarget
         ? "A imagem editada está pronta."
         : referenceImageRequest
           ? "A imagem criada com base na referência está pronta."
@@ -1084,29 +1180,32 @@ export default function Page() {
       : [queuedChat, ...existingChats];
     chatsRef.current = queuedChats;
     setChats(queuedChats);
-    setInput("");
-    setAttachment(null);
-    const nextActivityMessages = editTarget
+    if (!backgroundSend) {
+      setInput("");
+      setAttachment(null);
+      delete draftsRef.current[chatId];
+    }
+    const nextActivityMessages = !backgroundSend && editTarget
       ? [
           "A AKIRA está a analisar a imagem original",
           "A AKIRA está a aplicar as alterações pedidas",
           "A AKIRA está a finalizar a imagem editada",
         ]
-      : referenceImageRequest
+      : !backgroundSend && referenceImageRequest
         ? [
             "A AKIRA está a analisar a imagem de referência",
             "A AKIRA está a preparar a composição visual",
             "A AKIRA está a gerar uma nova imagem com base na referência",
           ]
-      : imgMode
+      : !backgroundSend && imgMode
         ? [
             "A AKIRA está a preparar a imagem",
             "A AKIRA está a compor os elementos visuais",
             "A AKIRA está a gerar a imagem",
         ]
-        : attachment?.dataUrl
+        : !backgroundSend && attachment?.dataUrl
           ? ["A AKIRA está a analisar a imagem", "A AKIRA está a interpretar os detalhes visuais"]
-          : attachment?.text
+          : !backgroundSend && attachment?.text
             ? ["A AKIRA está a ler o ficheiro", "A AKIRA está a analisar o conteúdo"]
             : isWebSearchRequest(content)
               ? [
@@ -1133,9 +1232,11 @@ export default function Page() {
           : { messages: nextActivityMessages, index: 0, slow: true },
       }));
     }, 8_000);
-    setStatus("");
-    setStatusKind("");
-    setToolsOpen(false);
+    if (!backgroundSend) {
+      setStatus("");
+      setStatusKind("");
+      setToolsOpen(false);
+    }
 
     try {
       if (!authSnapshot.historyScope) {
@@ -1203,14 +1304,14 @@ export default function Page() {
         error instanceof AccountRequiredError || error instanceof UsageLimitError,
       );
       if (error instanceof AccountRequiredError) {
-        if (activeIdRef.current === chatId) {
+        if (!backgroundSend && activeIdRef.current === chatId) {
           setInput(content);
           setAttachment(attachment);
         }
         setAuthMode("account");
         setAuthMessage(error.message);
       } else if (error instanceof UsageLimitError) {
-        if (activeIdRef.current === chatId) {
+        if (!backgroundSend && activeIdRef.current === chatId) {
           setInput(content);
           setAttachment(attachment);
         }
@@ -1225,7 +1326,7 @@ export default function Page() {
         if (activeIdRef.current === chatId) setStatusKind("error");
       } else {
         if (activeIdRef.current === chatId) {
-          if (imageRequest) setInput(content);
+          if (!backgroundSend && imageRequest) setInput(content);
           setStatus(error instanceof Error ? error.message : "O pedido à AKIRA falhou.");
           setStatusKind("error");
         }
@@ -1240,6 +1341,7 @@ export default function Page() {
         return next;
       });
       if (activeIdRef.current === chatId) inputRef.current?.focus();
+      flushQueuedMessage(chatId);
     }
   }
 
@@ -1473,13 +1575,13 @@ export default function Page() {
               <button
                 className="hist-item"
                 onClick={() => {
+                  stashDraft();
                   activeSessionVersionRef.current += 1;
                   setActiveSessionVersion(activeSessionVersionRef.current);
                   activeIdRef.current = chat.id;
                   setActiveId(chat.id);
-                  setInput("");
+                  restoreDraft(chat.id);
                   setAttachment(null);
-                  setImgMode(false);
                   setEditTarget(null);
                   setToolsOpen(false);
                   setSideOpen(false);
@@ -1718,6 +1820,13 @@ export default function Page() {
                     <LoaderCircle size={15} className="spin" aria-hidden="true" />
                     <span>{busy ? "A ler o ficheiro" : activity?.messages[activity.index] || "A AKIRA está a pensar"}</span>
                     <span className="typing-dots" aria-hidden="true"><i /><i /><i /></span>
+                    {!busy && activeQueuedCount > 0 && (
+                      <span className="typing-note">
+                        {activeQueuedCount === 1
+                          ? "1 mensagem na fila."
+                          : `${activeQueuedCount} mensagens na fila.`}
+                      </span>
+                    )}
                     {!busy && activity?.slow && (
                       <span className="typing-note">O pedido está a demorar. Mantém esta página aberta; a AKIRA continua a processá-lo.</span>
                     )}
@@ -1806,7 +1915,7 @@ export default function Page() {
                       : "Escreve a tua mensagem…"
                 }
                 value={input}
-                disabled={!historyReady || busy || activeChatPending}
+                disabled={!historyReady || busy}
                 onChange={(event) => setInput(event.target.value)}
                 onKeyDown={onKeyDown}
                 onPaste={(e) => {
@@ -1873,14 +1982,20 @@ export default function Page() {
                 {imgMode && <span className="active-tool"><ImagePlus size={12} /> Imagem</span>}
               </div>
               <div className="composer-submit">
-                <span className="enter-hint">↵ enviar</span>
+                <span className="enter-hint">↵ {activeChatPending ? "adicionar à fila" : "enviar"}</span>
                 <button
                   type="submit"
                   className="send-btn"
-                  disabled={!historyReady || busy || activeChatPending || (!input.trim() && !attachment)}
-                  aria-label={imgMode || automaticImagePrompt ? "Gerar imagem" : "Enviar mensagem"}
+                  disabled={!historyReady || busy || (!input.trim() && !attachment)}
+                  aria-label={
+                    activeChatPending
+                      ? "Adicionar à fila"
+                      : imgMode || automaticImagePrompt
+                        ? "Gerar imagem"
+                        : "Enviar mensagem"
+                  }
                 >
-                  {busy || activeChatPending ? <LoaderCircle className="spin" size={16} /> : imgMode || automaticImagePrompt ? <ImagePlus size={16} /> : <Send size={15} />}
+                  {busy ? <LoaderCircle className="spin" size={16} /> : imgMode || automaticImagePrompt ? <ImagePlus size={16} /> : <Send size={15} />}
                 </button>
               </div>
             </div>

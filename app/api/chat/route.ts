@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
-import { apiChat, apiDescribe, apiWebSearch } from "@/lib/space";
-import { extractWebSearchQuery } from "@/lib/action-intents";
+import { apiChat, apiDescribe } from "@/lib/space";
 import {
   activateChatJob,
   claimChatJob,
@@ -45,19 +44,7 @@ async function startChatJob(jobId: string, userId: string): Promise<void> {
       const requestMessage = imageContext
         ? `${request.message}\n\n${imageContext}`
         : request.message;
-      const searchQuery = extractWebSearchQuery(request.message);
-      const result = searchQuery
-        ? await (async () => {
-            const search = await apiWebSearch(searchQuery);
-            const sources = search.links.length
-              ? `\n\nFontes:\n${search.links.map((link, index) => `${index + 1}. ${link}`).join("\n")}`
-              : "";
-            return {
-              reply: `${search.summary || "Encontrei estas fontes para a pesquisa."}${sources}`,
-              provider: "web_search",
-            };
-          })()
-        : await apiChat(requestMessage, request.history, request.displayName);
+      const result = await apiChat(requestMessage, request.history, request.displayName);
       await updateChatJob(jobId, {
         status: "complete",
         result: { ...result, ...(imageContext ? { context: imageContext } : {}) },
