@@ -260,6 +260,8 @@ export default function Page() {
   const messages = activeChat?.messages || [];
   const activeChatPending = !!activeId && pendingChatIds.has(activeId);
   const activeQueuedCount = activeId ? queuedCounts[activeId] || 0 : 0;
+  const activeQueuedMessages =
+    activeId && activeChatPending ? queuedMessagesRef.current[activeId] || [] : [];
   const activity = activeId ? requestActivities[activeId] : undefined;
   const activeSessionKey = `${activeSessionVersion}:${activeId ?? "new"}`;
   const busy = fileReadingChatKeys.has(activeSessionKey);
@@ -1075,7 +1077,7 @@ export default function Page() {
         updateQueue(chatId, (queue) => [...queue, content]);
         delete draftsRef.current[chatId];
         setInput("");
-        setStatus("Mensagem na fila. A AKIRA responde assim que terminar a resposta atual.");
+        setStatus("Mensagem adicionada à fila. A AKIRA responde assim que terminar a resposta atual.");
         setStatusKind("success");
         inputRef.current?.focus();
       } else {
@@ -1594,7 +1596,15 @@ export default function Page() {
                 title={chat.title}
               >
                 <span className="history-item-title">{chat.title}</span>
-                <span className="history-item-time">{formatTime(chat.updatedAt)}</span>
+                <span className="history-item-meta">
+                  <span className="history-item-time">{formatTime(chat.updatedAt)}</span>
+                  {queuedCounts[chat.id] > 0 && (
+                    <span className="history-item-queue" title={`${queuedCounts[chat.id]} na fila`}>
+                      <Clock3 size={10} aria-hidden="true" />
+                      {queuedCounts[chat.id]}
+                    </span>
+                  )}
+                </span>
               </button>
               <button
                 className="history-menu-button icon-button"
@@ -1823,17 +1833,41 @@ export default function Page() {
                     <LoaderCircle size={15} className="spin" aria-hidden="true" />
                     <span>{busy ? "A ler o ficheiro" : activity?.messages[activity.index] || "A AKIRA está a pensar"}</span>
                     <span className="typing-dots" aria-hidden="true"><i /><i /><i /></span>
-                    {!busy && activeQueuedCount > 0 && (
-                      <span className="typing-note">
-                        {activeQueuedCount === 1
-                          ? "1 mensagem na fila."
-                          : `${activeQueuedCount} mensagens na fila.`}
-                      </span>
-                    )}
                     {!busy && activity?.slow && (
                       <span className="typing-note">O pedido está a demorar. Mantém esta página aberta; a AKIRA continua a processá-lo.</span>
                     )}
                   </div>
+                </div>
+              )}
+              {!busy && activeChatPending && activeQueuedMessages.length > 0 && (
+                <div
+                  className="queue-group"
+                  role="list"
+                  aria-label={
+                    activeQueuedMessages.length === 1
+                      ? "1 mensagem na fila"
+                      : `${activeQueuedMessages.length} mensagens na fila`
+                  }
+                >
+                  <div className="queue-heading">
+                    <Clock3 size={11} aria-hidden="true" />
+                    <span>Na fila</span>
+                    <span className="queue-count">{activeQueuedMessages.length}</span>
+                  </div>
+                  {activeQueuedMessages.map((queued, index) => (
+                    <article
+                      className={`msg user queued ${index === 0 ? "next" : ""}`}
+                      role="listitem"
+                      key={`${index}-${queued.slice(0, 24)}`}
+                    >
+                      <div className="message-content">
+                        <div className="bubble queue-bubble">{queued}</div>
+                        <span className="queue-meta">
+                          {index === 0 ? "A seguir · sai quando a resposta atual terminar" : `#${index + 1} na fila`}
+                        </span>
+                      </div>
+                    </article>
+                  ))}
                 </div>
               )}
             </div>
@@ -1985,6 +2019,12 @@ export default function Page() {
                 {imgMode && <span className="active-tool"><ImagePlus size={12} /> Imagem</span>}
               </div>
               <div className="composer-submit">
+                {activeChatPending && activeQueuedCount > 0 && (
+                  <span className="queue-chip" title="Saem automaticamente a seguir à resposta atual">
+                    <Clock3 size={11} aria-hidden="true" />
+                    {activeQueuedCount === 1 ? "1 na fila" : `${activeQueuedCount} na fila`}
+                  </span>
+                )}
                 <span className="enter-hint">↵ {activeChatPending ? "adicionar à fila" : "enviar"}</span>
                 <button
                   type="submit"
