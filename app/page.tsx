@@ -552,6 +552,12 @@ export default function Page() {
         "providerModel" in result && typeof result.providerModel === "string"
           ? result.providerModel
           : undefined;
+      const imageContext =
+        "imageContext" in result &&
+        typeof result.imageContext === "string" &&
+        result.imageContext.trim()
+          ? result.imageContext.trim().slice(0, 2000)
+          : undefined;
       const content =
         "reply" in result && typeof result.reply === "string" && result.reply.trim()
           ? result.reply
@@ -559,6 +565,7 @@ export default function Page() {
       assistantMessage = makeMessage("assistant", content, {
         image: result.image,
         ...(providerModel ? { imageProviderModel: providerModel } : {}),
+        ...(imageContext ? { context: imageContext } : {}),
       });
     } else if (
       pending.kind === "chat" &&

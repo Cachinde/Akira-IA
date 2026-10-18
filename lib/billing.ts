@@ -155,14 +155,26 @@ export async function ensureBillingSchema(): Promise<void> {
 }
 
 export type ImageJobStatus = "processing" | "complete" | "failed";
-export type ImageJobResult = { image: string; info: string };
+export type ImageJobResult = {
+  image: string;
+  info: string;
+  providerModel?: string;
+  imageContext?: string;
+};
 export type ChatJobRequest = {
   message: string;
   imageB64?: string;
   history: { role: "user" | "assistant"; content: string }[];
   displayName: string;
 };
-export type ChatJobResult = { reply: string; provider: string; context?: string };
+export type ChatJobResult = {
+  reply: string;
+  provider: string;
+  context?: string;
+  image?: string;
+  providerModel?: string;
+  imageContext?: string;
+};
 export type ChatJobStatus = "reserved" | "queued" | "processing" | "complete" | "failed";
 
 export async function createImageJob(
