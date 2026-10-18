@@ -1793,25 +1793,45 @@ export default function Page() {
             </div>
           )}
           <form className="composer" onSubmit={onSubmit}>
-            <textarea
-              ref={inputRef}
-              rows={1}
-              placeholder={
-                editTarget
-                  ? "Descreve as alterações a fazer à imagem…"
-                  : imgMode
-                    ? attachment?.dataUrl
-                      ? "Descreve a imagem a criar com base na referência…"
-                      : "Descreve a imagem que tens em mente…"
-                    : "Escreve a tua mensagem…"
-              }
-              value={input}
-              disabled={!historyReady || busy || activeChatPending}
-              onChange={(event) => setInput(event.target.value)}
-              onKeyDown={onKeyDown}
-              aria-label="A tua mensagem"
-              aria-invalid={messageExceedsLimit}
-            />
+              <textarea
+                ref={inputRef}
+                rows={1}
+                placeholder={
+                  editTarget
+                    ? "Descreve as alterações a fazer à imagem…"
+                    : imgMode
+                      ? attachment?.dataUrl
+                        ? "Descreve a imagem a criar com base na referência…"
+                        : "Descreve a imagem que tens em mente…"
+                      : "Escreve a tua mensagem…"
+                }
+                value={input}
+                disabled={!historyReady || busy || activeChatPending}
+                onChange={(event) => setInput(event.target.value)}
+                onKeyDown={onKeyDown}
+                onPaste={(e) => {
+                  const items = e.clipboardData?.items;
+                  if (!items) return;
+                  for (let i = 0; i < items.length; i++) {
+                    const item = items[i];
+                    if (item.kind === 'file' && item.type.startsWith('image/')) {
+                      const file = item.getAsFile();
+                      if (!file) continue;
+                      e.preventDefault();
+                      const reader = new FileReader();
+                      reader.onload = () => {
+                        if (typeof reader.result === 'string') {
+                          setAttachment({ name: file.name || 'imagem-colada.png', dataUrl: reader.result });
+                        }
+                      };
+                      reader.readAsDataURL(file);
+                      return;
+                    }
+                  }
+                }}
+                aria-label="A tua mensagem"
+                aria-invalid={messageExceedsLimit}
+              />
             {messageExceedsLimit && (
               <div className="composer-limit-error" role="alert">
                 A mensagem excede o limite de {messageCharacterLimit.toLocaleString("pt-PT")} caracteres. Encurta-a para a poderes enviar.
