@@ -541,7 +541,6 @@ export default function Page() {
     if (error) {
       assistantMessage = makeMessage("assistant", `O pedido não foi concluído: ${error}`);
     } else if (
-      pending.kind === "image" &&
       result &&
       typeof result === "object" &&
       "image" in result &&
@@ -551,7 +550,11 @@ export default function Page() {
         "providerModel" in result && typeof result.providerModel === "string"
           ? result.providerModel
           : undefined;
-      assistantMessage = makeMessage("assistant", pending.completionText, {
+      const content =
+        "reply" in result && typeof result.reply === "string" && result.reply.trim()
+          ? result.reply
+          : pending.completionText;
+      assistantMessage = makeMessage("assistant", content, {
         image: result.image,
         ...(providerModel ? { imageProviderModel: providerModel } : {}),
       });

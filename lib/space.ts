@@ -5,7 +5,7 @@ const IMAGE_SPACE_ID = process.env.HF_SPACE_ID || CHAT_SPACE_ID;
 const HF_TOKEN = process.env.HF_TOKEN?.trim();
 
 export type ChatMsg = { role: "user" | "assistant"; content: string };
-export type ChatResult = { reply: string; provider: string };
+export type ChatResult = { reply: string; provider: string; image?: string; providerModel?: string };
 export type ImageResult = { image: string; info: string; providerModel?: string };
 export type WebSearchResult = { query: string; summary: string; links: string[] };
 
@@ -230,19 +230,34 @@ export async function apiChat(
     gradioHistory,
     JSON.stringify({ display_name: displayName }),
   ]);
-  const output = objectOutput<{ reply?: unknown; provider?: unknown }>(result.data, "conversa");
+  const output = objectOutput<{
+    reply?: unknown;
+    provider?: unknown;
+    image?: unknown;
+    providerModel?: unknown;
+  }>(result.data, "conversa");
   const reply = typeof output.reply === "string" ? output.reply.trim() : "";
 
   if (output.provider === "error") {
     throw new Error(reply || "A AKIRA não conseguiu processar o contexto da conversa.");
   }
-  if (!reply) {
+  const image =
+    typeof output.image === "string" && output.image.startsWith("data:image/")
+      ? output.image
+      : undefined;
+  if (!reply && !image) {
     throw new Error("A AKIRA não devolveu uma resposta de texto.");
   }
+  const providerModel =
+    image && typeof output.providerModel === "string" && output.providerModel.trim()
+      ? output.providerModel.trim()
+      : undefined;
 
   return {
-    reply,
+    reply: reply || "Aqui está a imagem que preparei com base na nossa conversa.",
     provider: typeof output.provider === "string" ? output.provider : "AKIRA-SOFTEDGE",
+    ...(image ? { image } : {}),
+    ...(providerModel ? { providerModel } : {}),
   };
 }
 
