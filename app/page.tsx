@@ -65,7 +65,7 @@ class ContentModerationError extends Error {}
 
 class UsageLimitError extends Error {
   constructor(
-    readonly metric: "messages" | "images",
+    readonly metric: "messages" | "images" | "files",
     message: string,
     readonly retryAt: string | null,
   ) {
@@ -1972,10 +1972,10 @@ export default function Page() {
            <button className="quota-close icon-button" onClick={() => setQuotaNotice(null)} aria-label="Fechar aviso">
              <X size={17} />
            </button>
-           <span className="quota-icon"><Sparkles size={21} /></span>
-           <span className="quota-eyebrow">LIMITE DO PLANO ATINGIDO</span>
-           <h2 id="quota-title">{quotaNotice.metric === "images" ? "Queres criar mais imagens?" : "Continua a conversar com a AKIRA."}</h2>
-           <p id="quota-description">{quotaNotice.message}</p>
+            <span className="quota-icon">{quotaNotice.metric === "files" ? <FileDown size={21} /> : quotaNotice.metric === "images" ? <ImagePlus size={21} /> : <Sparkles size={21} />}</span>
+            <span className="quota-eyebrow">{quotaNotice.metric === "files" ? "LIMITE DE FICHEIROS ATINGIDO" : quotaNotice.metric === "images" ? "LIMITE DE IMAGENS ATINGIDO" : "LIMITE DO PLANO ATINGIDO"}</span>
+            <h2 id="quota-title">{quotaNotice.metric === "files" ? "Atingiste os 3 ficheiros do plano Free." : quotaNotice.metric === "images" ? "Queres criar mais imagens?" : "Continua a conversar com a AKIRA."}</h2>
+            <p id="quota-description">{quotaNotice.metric === "files" ? "No plano Free podes analisar até 3 ficheiros por dia (PDF, DOCX, TXT, CSV, JSON). Volta amanhã ou passa para Pro/Ultra para continuares agora." : quotaNotice.message}</p>
            {quotaNotice.retryAt && (
              <p className="quota-countdown" role="timer">
                Repõe em <strong>{formatCountdown(quotaNotice.retryAt, countdownNow)}</strong>
