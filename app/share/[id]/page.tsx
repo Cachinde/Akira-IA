@@ -31,9 +31,18 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     openGraph: {
       type: "article",
       url: pageUrl,
+      siteName: "AKIRA",
       title: "Uma resposta da AKIRA",
       description,
-      images: [{ url: image, ...(content.image ? {} : { width: 1200, height: 630 }), alt: content.image ? "Imagem partilhada da AKIRA" : "AKIRA — Assistente inteligente" }],
+      images: [
+        {
+          url: image,
+          secureUrl: image,
+          width: content.image ? 1024 : 1200,
+          height: content.image ? 1024 : 630,
+          alt: content.image ? "Imagem partilhada da AKIRA" : "AKIRA — Assistente inteligente",
+        },
+      ],
     },
     twitter: { card: "summary_large_image", title: "Uma resposta da AKIRA", description, images: [image] },
   };

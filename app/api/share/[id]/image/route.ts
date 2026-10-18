@@ -34,7 +34,6 @@ export async function GET(_request: NextRequest, { params }: Props) {
       "Content-Length": String(image.length),
       "Cache-Control": "public, max-age=3600, stale-while-revalidate=86400",
       "X-Content-Type-Options": "nosniff",
-      "Content-Disposition": "inline",
     },
   });
 }
