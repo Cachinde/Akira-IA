@@ -1680,7 +1680,6 @@ export default function Page() {
               <Menu size={19} />
             </button>
             <span className="model">AKIRA</span>
-            <ChevronDown className="model-chevron" size={14} />
           </div>
           <div className="topbar-right">
             <a
