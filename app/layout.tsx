@@ -1,6 +1,21 @@
 import type { Metadata } from "next";
+import { DM_Sans, Manrope } from "next/font/google";
 import "./globals.css";
 import { getPublicSiteUrl } from "@/lib/site-url";
+
+const dmSans = DM_Sans({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+  display: "swap",
+  variable: "--font-sans",
+});
+
+const manrope = Manrope({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700", "800"],
+  display: "swap",
+  variable: "--font-display",
+});
 
 const siteUrl = getPublicSiteUrl();
 const shareImageUrl = new URL("/akira-share-v2.png", siteUrl).toString();
@@ -104,7 +119,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   };
 
   return (
-    <html lang="pt">
+    <html lang="pt" className={`${dmSans.variable} ${manrope.variable}`}>
       <body>
         <script
           type="application/ld+json"

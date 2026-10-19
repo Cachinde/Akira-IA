@@ -1999,7 +1999,7 @@ export default function Page() {
               <div className="composer-tools">
                 <button
                   type="button"
-                  className="icon-btn attach-btn"
+                  className="icon-btn"
                   aria-label={imgMode ? "Anexar imagem de referência" : "Anexar imagem ou documento"}
                   onClick={() => fileRef.current?.click()}
                   disabled={!historyReady || busy || activeChatPending || Boolean(editTarget)}

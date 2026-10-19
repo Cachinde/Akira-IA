@@ -86,7 +86,6 @@ export default function LoginPage() {
 
         <section className="login-card" aria-labelledby="login-title" ref={loginCardRef}>
           <Link href="/" className="login-back"><ArrowLeft size={15} /> Voltar ao chat</Link>
-          <div className="login-mobile-brand"><Logo size={34} /><span>AKIRA</span></div>
           <span className="login-eyebrow"><Sparkles size={13} /> BEM-VINDO DE VOLTA</span>
           <h2 id="login-title">Entra na tua conta</h2>
           <p className="login-intro">Escolhe como queres continuar com a AKIRA.</p>
@@ -98,7 +97,7 @@ export default function LoginPage() {
               <span>Continuar com Google</span>
               <ArrowUpRight className="login-provider-arrow" size={15} />
             </a>
-            <a className="login-provider softedge" href="/api/auth/softedge">
+            <a className="login-provider" href="/api/auth/softedge">
               <span className="softedge-login-mark"><Sparkles size={15} /></span>
               <span>Continuar com SoftEdge</span>
               <ArrowUpRight className="login-provider-arrow" size={15} />
