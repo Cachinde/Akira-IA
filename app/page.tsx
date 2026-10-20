@@ -30,6 +30,7 @@ import {
   ThumbsUp,
   X,
 } from "lucide-react";
+import * as React from "react";
 import { ChangeEvent, FormEvent, KeyboardEvent, useEffect, useRef, useState } from "react";
 import Logo from "../components/Logo";
 import { Chat, Msg, clearChats, deleteChat, loadChats, saveChat, saveChats } from "../lib/history";
@@ -198,7 +199,17 @@ function parseUiSpec(result: any) {
 }
 
 async function readJson(response: Response) {
-  const data: unknown = await response.json().catch(() => null);
+  let data: unknown = null;
+  try {
+    data = await response.json();
+  } catch (error) {
+    if (!response.ok) {
+      data = null;
+    } else {
+      console.warn("A resposta da AKIRA veio ilegível; o corpo não chegou completo.", error);
+      throw new TypeError("A resposta da AKIRA chegou incompleta ao bot_ui; será consultada de novo.");
+    }
+  }
   if (!response.ok) {
     if (data && typeof data === "object" && "code" in data && data.code === "content_moderation") {
       throw new ContentModerationError(responseError(data, "Reformula a descrição e tenta novamente."));
@@ -237,14 +248,16 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
 
 async function waitForJob(endpoint: string, jobId: string): Promise<unknown> {
   let delay = 1_500;
+  let relayFailures = 0;
   while (true) {
     try {
       const separator = endpoint.includes("?") ? "&" : "?";
       const response = await fetch(`${endpoint}${separator}jobId=${encodeURIComponent(jobId)}`, {
         cache: "no-store",
-        signal: AbortSignal.timeout(20_000),
+        signal: AbortSignal.timeout(30_000),
       });
       const result = await readJson(response);
+      relayFailures = 0;
       if (
         result &&
         typeof result === "object" &&
@@ -262,7 +275,12 @@ async function waitForJob(endpoint: string, jobId: string): Promise<unknown> {
         (error.name === "TimeoutError" || error.name === "AbortError")
       ) {
         console.warn("A consulta do pedido expirou; continuará a ser consultada.", error);
-      } else if (!(error instanceof TypeError)) {
+      } else if (error instanceof TypeError) {
+        relayFailures += 1;
+        if (relayFailures >= 6) {
+          throw new Error("A resposta da AKIRA não chegou completa ao bot_ui. Tenta gerar novamente.");
+        }
+      } else {
         throw error;
       }
       await new Promise((resolve) => setTimeout(resolve, delay));
