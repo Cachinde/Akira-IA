@@ -104,6 +104,39 @@ export default function LoginPage() {
             </a>
           </div>
 
+          <div className="login-divider"><span>ou continua com e‑mail</span></div>
+          <form className="login-form" onSubmit={(event) => void requestLink(event)}>
+            <label htmlFor="login-name">Como queres que a AKIRA te chame?</label>
+            <input
+              id="login-name"
+              ref={displayNameRef}
+              autoComplete="nickname"
+              maxLength={40}
+              minLength={2}
+              value={displayName}
+              onChange={(event) => setDisplayName(event.target.value)}
+              placeholder="O teu nome"
+              required
+            />
+            <label htmlFor="login-email">Endereço de e‑mail</label>
+            <input
+              id="login-email"
+              type="email"
+              autoComplete="email"
+              maxLength={254}
+              value={email}
+              onChange={(event) => { setEmail(event.target.value); setSent(false); }}
+              placeholder="tu@exemplo.com"
+              required
+            />
+            {message && <div className={isError ? "login-message error" : "login-message"} role={isError ? "alert" : "status"}>{message}</div>}
+            <button className="login-submit" type="submit" disabled={busy || sent}>
+              {busy ? <LoaderCircle size={16} className="spin" /> : sent ? <ShieldCheck size={16} /> : <Mail size={16} />}
+              {busy ? "A enviar…" : sent ? "Link enviado" : "Receber link de acesso"}
+            </button>
+          </form>
+          <p className="login-footnote"><ShieldCheck size={13} /> Sem palavra‑passe. O link é pessoal e expira em 15 minutos.</p>
+
         </section>
       </div>
     </main>
