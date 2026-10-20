@@ -41,6 +41,7 @@ import {
 } from "../lib/chat-limits";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { uiRegistry, type RenderSpec } from "@/components/ui-registry";
 
 type AuthSnapshot = {
   historyScope: string;
@@ -50,6 +51,71 @@ type AuthSnapshot = {
   guestMessagesUsed: number;
   guestMessageLimit: number;
 };
+
+type MessageSegment =
+  | { kind: "text"; text: string }
+  | { kind: "spec"; spec: RenderSpec };
+
+type UiSpecSegmentProps = { segment: MessageSegment };
+
+// Cards generativos ("conforme o GPT gera", sem markdown):
+// aceita blocos :::ui\n{...}\n::: e ```ui\n{...}\n``` no texto do assistant.
+// AKIRA emite specs para Metric/Steps/ResultCard/Card; o resto fica markdown.
+const UI_SPEC_PATTERN = /:::ui\s*\n([\s\S]*?)\n:::|```(?:ui|ui-spec)\s*\n([\s\S]*?)```/g;
+
+export function parseUiSpecBlocks(content: string): MessageSegment[] {
+  const segments: MessageSegment[] = [];
+  let cursor = 0;
+  let hadSpec = false;
+  UI_SPEC_PATTERN.lastIndex = 0;
+  let match = UI_SPEC_PATTERN.exec(content);
+  while (match) {
+    const before = content.slice(cursor, match.index).trim();
+    if (before) segments.push({ kind: "text", text: before });
+    const raw = (match[1] ?? match[2] ?? "").trim();
+    let spec: RenderSpec | null = null;
+    try {
+      const parsed = JSON.parse(raw) as unknown;
+      if (
+        parsed &&
+        typeof parsed === "object" &&
+        "component" in parsed &&
+        typeof (parsed as RenderSpec).component === "string" &&
+        (parsed as RenderSpec).component in uiRegistry
+      ) {
+        spec = parsed as RenderSpec;
+      }
+    } catch {
+      spec = null;
+    }
+    if (spec) {
+      segments.push({ kind: "spec", spec });
+      hadSpec = true;
+    } else if (match[0]) {
+      segments.push({ kind: "text", text: match[0] });
+    }
+    cursor = UI_SPEC_PATTERN.lastIndex;
+    match = UI_SPEC_PATTERN.exec(content);
+  }
+  if (!hadSpec) return [{ kind: "text", text: content }];
+  const tail = content.slice(cursor).trim();
+  if (tail) segments.push({ kind: "text", text: tail });
+  return segments;
+}
+
+function UiSpecSegment({ segment }: UiSpecSegmentProps) {
+  if (segment.kind === "text") {
+    return <ReactMarkdown remarkPlugins={[remarkGfm]}>{segment.text}</ReactMarkdown>;
+  }
+  const Component = uiRegistry[segment.spec.component as keyof typeof uiRegistry];
+  if (!Component) {
+    return <ReactMarkdown remarkPlugins={[remarkGfm]}>{`:::ui\n${JSON.stringify(segment.spec)}\n:::`}</ReactMarkdown>;
+  }
+  if (segment.spec.component === "Card") {
+    return <Component props={segment.spec.props} />;
+  }
+  return <Component {...(segment.spec.props as Record<string, unknown>)} />;
+}
 
 type AuthMode = "profile" | "account" | null;
 
@@ -122,6 +188,13 @@ function responseError(data: unknown, fallback: string) {
     return data.error;
   }
   return fallback;
+}
+
+function parseUiSpec(result: any) {
+  if (result.ui_spec && typeof result.ui_spec === "object" && typeof result.ui_spec.component === "string" && result.ui_spec.props && typeof result.ui_spec.props === "object") {
+    return { component: result.ui_spec.component, props: result.ui_spec.props };
+  }
+  return null;
 }
 
 async function readJson(response: Response) {
@@ -1924,9 +1997,19 @@ export default function Page() {
                       </button>
                     )}
                     <div className={`bubble ${message.role === "assistant" ? "markdown-content" : ""}`}>
-                      {message.role === "assistant"
-                        ? <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
-                        : message.content}
+                      {message.role === "assistant" ? (
+                        (parseUiSpecBlocks(message.content).some((segment) => segment.kind === "spec")
+                          ? (
+                            <div className="ui-specs">
+                              {parseUiSpecBlocks(message.content).map((segment, segmentIndex) => (
+                                <UiSpecSegment key={segmentIndex} segment={segment} />
+                              ))}
+                            </div>
+                          )
+                          : <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>)
+                      ) : (
+                        message.content
+                      )}
                     </div>
                     {message.role === "assistant" && message.context && !message.image && (
                       <details className="source-card">

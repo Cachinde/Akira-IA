@@ -8,6 +8,7 @@ export type Msg = {
   attachment?: string;
   attachmentName?: string;
   feedback?: "positive" | "negative";
+  uiSpec?: { component: string; props: Record<string, unknown> };
   createdAt: string;
 };
 
@@ -98,6 +99,13 @@ function normalizeChat(chat: Chat, index: number): Chat {
       ...(typeof candidate.attachmentName === "string" ? { attachmentName: candidate.attachmentName } : {}),
       ...(candidate.feedback === "positive" || candidate.feedback === "negative"
         ? { feedback: candidate.feedback }
+        : {}),
+      ...(candidate.uiSpec &&
+      typeof candidate.uiSpec === "object" &&
+      typeof candidate.uiSpec.component === "string" &&
+      candidate.uiSpec.props &&
+      typeof candidate.uiSpec.props === "object"
+        ? { uiSpec: candidate.uiSpec }
         : {}),
     };
   });

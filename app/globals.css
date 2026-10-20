@@ -263,6 +263,8 @@ button:disabled { cursor: not-allowed; }
 .typing-note { flex-basis: 100%; margin: -3px 0 0 23px; color: var(--faint); font-size: 11px; line-height: 1.5; }
 .typing-seconds { min-width: 34px; padding: 3px 7px; border-radius: 7px; background: var(--surface); color: var(--muted); font-size: 10px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .typing-eta { color: var(--faint); font-size: 10.5px; font-variant-numeric: tabular-nums; }
+.ui-specs { display: flex; flex-direction: column; gap: 10px; }
+.ui-specs > * { max-width: 100%; }
 .typing-progress { flex-basis: 100%; margin: -2px 0 0 0; height: 3px; border-radius: 999px; background: var(--surface-2); overflow: hidden; }
 .typing-progress i { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, var(--lilac), #8fd4bb); transition: width 1s linear; }
 .typing-dots { display: inline-flex; align-items: center; gap: 3px; }
@@ -313,6 +315,11 @@ button:disabled { cursor: not-allowed; }
 /* ---------------- Generative UI (cards from backend → React components) ---------------- */
 .ui-card { width: 100%; padding: 14px 15px; border: 1px solid rgba(255,255,255,.07); border-radius: 14px; background: #1b1b20; box-shadow: 0 6px 22px rgba(0,0,0,.32); }
 .ui-card-content { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.65; font-size: 14px; color: #f1f1f6; }
+.ui-card, .ui-card-content, .ui-metric-card, .ui-result-card, .ui-steps { color: #ffffff; }
+.ui-card-content *, .ui-metric-card *, .ui-result-card *, .ui-steps * { color: inherit; }
+.ui-metric-value, .ui-step-title, .ui-result-card-title { color: #ffffff !important; }
+.ui-metric-label, .ui-step-detail, .ui-result-card-subtitle, .ui-result-card-desc { color: #d1d1d1 !important; }
+.ui-result-card-link { color: #8fb4ff !important; }
 .ui-metric-card { display: flex; flex-direction: column; align-items: stretch; gap: 5px; padding: 13px 15px; border: 1px solid rgba(255,255,255,.07); border-radius: 12px; background: #1b1b20; }
 .ui-metric-label { font-size: 10px; font-weight: 700; letter-spacing: .16em; text-transform: uppercase; color: #9894a3; }
 .ui-metric-value { font-size: 19px; font-weight: 700; color: #ffffff; letter-spacing: -.02em; }
