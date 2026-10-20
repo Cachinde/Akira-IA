@@ -621,7 +621,20 @@ button:disabled { cursor: not-allowed; }
   .profile-row small { color: #b2adbc; }
   .shell { height: 100dvh; min-height: 0; }
   .main { width: 100%; min-width: 0; }
-  .topbar { height: 54px; gap: 6px; padding: 0 max(10px, env(safe-area-inset-right)) 0 max(10px, env(safe-area-inset-left)); }
+  .topbar {
+    position: sticky;
+    top: 0;
+    z-index: 30;
+    height: 56px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 1rem;
+    background: rgba(20, 20, 20, 0.8);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  }
+
   .topbar-left { gap: 6px; }
   .topbar-right { min-width: 0; gap: 4px; }
   .softedge-top-link { gap: 4px; padding: 0 5px; font-size: 9px; letter-spacing: .08em; }
