@@ -30,3 +30,13 @@ export function isImageGenerationRequest(value: string): boolean {
     /^(?:(?:quero|preciso de|faz-me)\s+)(?:uma?\s+)?(?:imagem|foto|ilustracao|desenho)\b/i;
   return command.test(text) || nounRequest.test(text);
 }
+
+export function isComputeRequest(value: string): boolean {
+  const text = normalizeIntentText(value).trim();
+  if (!text || text.length > 200) return false;
+  if (!/\d/.test(text)) return false;
+  if (/\d\s*[+\-*/^]\s*\d/.test(text)) return true;
+  if (/\d\s*(?:x|×|÷)\s*\d/.test(text)) return true;
+  if (/\d(?:[.,]\d+)?\s*%/.test(text)) return true;
+  return /\b(?:calcul\w+|media|mediana|desvio|soma|raiz|porcentagem|percentagem|estatisticas?|quanto\s+(?:e|eh|vale|fica|da))\b/.test(text);
+}

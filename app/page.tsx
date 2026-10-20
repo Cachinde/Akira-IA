@@ -12,6 +12,7 @@ import {
   Globe,
   ImagePlus,
   Lightbulb,
+  ListTodo,
   LoaderCircle,
   Maximize2,
   Menu,
@@ -33,7 +34,7 @@ import {
 import { ChangeEvent, FormEvent, KeyboardEvent, useEffect, useRef, useState } from "react";
 import Logo from "../components/Logo";
 import { Chat, Msg, clearChats, deleteChat, loadChats, saveChat, saveChats } from "../lib/history";
-import { extractWebSearchQuery, isImageGenerationRequest } from "../lib/action-intents";
+import { extractWebSearchQuery, isComputeRequest, isImageGenerationRequest } from "../lib/action-intents";
 import {
   CHAT_MESSAGE_CHARACTER_LIMIT,
   estimateTokens,
@@ -98,6 +99,11 @@ function conversationTitle(text: string) {
 function formatTime(value?: string) {
   if (!value || Number.isNaN(Date.parse(value))) return "";
   return new Intl.DateTimeFormat("pt", { hour: "2-digit", minute: "2-digit" }).format(new Date(value));
+}
+
+function resizeComposerTextarea(element: HTMLTextAreaElement) {
+  element.style.height = "auto";
+  element.style.height = `${element.scrollHeight}px`;
 }
 
 function formatCountdown(retryAt: string, now: number) {
@@ -242,6 +248,7 @@ export default function Page() {
   const [historyWritable, setHistoryWritable] = useState(false);
   const [storageError, setStorageError] = useState("");
   const [expandedImage, setExpandedImage] = useState<{ src: string; alt: string } | null>(null);
+  const [atLatest, setAtLatest] = useState(true);
   const fileRef = useRef<HTMLInputElement>(null);
   const threadRef = useRef<HTMLElement>(null);
   const shouldFollowMessages = useRef(true);
@@ -275,6 +282,7 @@ export default function Page() {
       ? IMAGE_GENERATION_CHARACTER_LIMIT
       : CHAT_MESSAGE_CHARACTER_LIMIT;
   const messageExceedsLimit = input.length > messageCharacterLimit;
+  const messageNearLimit = !messageExceedsLimit && input.length > messageCharacterLimit * 0.9;
   const displayName = authSnapshot?.displayName?.trim() || "";
   const query = search.trim().toLocaleLowerCase("pt");
   const visibleChats = chats.filter(
@@ -449,6 +457,7 @@ export default function Page() {
 
   useEffect(() => {
     shouldFollowMessages.current = true;
+    setAtLatest(true);
     const thread = threadRef.current;
     if (thread) thread.scrollTop = thread.scrollHeight;
   }, [activeId]);
@@ -459,6 +468,18 @@ export default function Page() {
       threadRef.current.scrollTop = threadRef.current.scrollHeight;
     }
   }, [activeId, messages.length, busy, activeChatPending]);
+
+  useEffect(() => {
+    if (inputRef.current) resizeComposerTextarea(inputRef.current);
+  }, [input]);
+
+  useEffect(() => {
+    function handleResize() {
+      if (inputRef.current) resizeComposerTextarea(inputRef.current);
+    }
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
 
   useEffect(() => {
     if (!pendingChatIds.size) return;
@@ -1064,6 +1085,10 @@ export default function Page() {
       return;
     }
 
+    if (!backgroundSend) {
+      shouldFollowMessages.current = true;
+      setAtLatest(true);
+    }
     let chatId: string;
     if (targetChatId) {
       if (!chatsRef.current.some((chat) => chat.id === targetChatId)) return;
@@ -1111,6 +1136,41 @@ export default function Page() {
       role: message.role,
       content: message.context ? `${message.content}\n\n${message.context}` : message.content,
     }));
+    const computeRequest =
+      !backgroundSend &&
+      !imageRequest &&
+      !isWebSearchRequest(content) &&
+      isComputeRequest(content);
+    let computeContext = "";
+    if (computeRequest) {
+      try {
+        const computeResponse = await fetch("/api/compute", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ expression: content }),
+        });
+        if (computeResponse.ok) {
+          const computeResult = await computeResponse.json();
+          if (
+            computeResult &&
+            typeof computeResult === "object" &&
+            typeof (computeResult as { value?: unknown }).value === "number" &&
+            Number.isFinite((computeResult as { value: number }).value) &&
+            typeof (computeResult as { expression?: unknown }).expression === "string" &&
+            typeof (computeResult as { formatted?: unknown }).formatted === "string"
+          ) {
+            computeContext = [
+              "[Ferramenta de cálculo exato executada pelo servidor]",
+              `Pedido: ${content}`,
+              `Expressão: ${(computeResult as { expression: string }).expression}`,
+              `Resultado: ${(computeResult as { formatted: string }).formatted}`,
+            ].join("\n");
+          }
+        }
+      } catch (computeError) {
+        console.warn("A ferramenta de cálculo não respondeu; a resposta segue sem cálculo exato.", computeError);
+      }
+    }
     const visibleContent = backgroundSend
       ? content
       : editTarget
@@ -1141,7 +1201,9 @@ export default function Page() {
     const chatContext =
       !backgroundSend && attachment?.text
         ? `[Conteúdo extraído do ficheiro ${attachment.name}]\n${attachment.text}`
-        : "";
+        : !backgroundSend && computeContext
+          ? computeContext
+          : "";
     const imageRequestBody: Record<string, unknown> = {
       jobId,
       ...(editTarget
@@ -1228,19 +1290,25 @@ export default function Page() {
           ? ["A AKIRA está a analisar a imagem", "A AKIRA está a interpretar os detalhes visuais"]
           : !backgroundSend && attachment?.text
             ? ["A AKIRA está a ler o ficheiro", "A AKIRA está a analisar o conteúdo"]
-            : isWebSearchRequest(content)
+            : computeRequest && computeContext
               ? [
-                  "A AKIRA está a pesquisar na web",
-                  "A AKIRA está a reunir e comparar informação",
-                  "A AKIRA está a organizar os resultados da pesquisa",
-                  "A AKIRA está a compor a resposta com a pesquisa",
-                ]
-              : [
-                  "A AKIRA está a analisar o teu pedido",
-                  "A AKIRA está a organizar as ideias",
-                  "A AKIRA está a estruturar a resposta",
+                  "A AKIRA está a calcular com precisão",
+                  "A AKIRA está a conferir os números",
                   "A AKIRA está a compor a resposta",
-                ];
+                ]
+              : isWebSearchRequest(content)
+                ? [
+                    "A AKIRA está a pesquisar na web",
+                    "A AKIRA está a reunir e comparar informação",
+                    "A AKIRA está a organizar os resultados da pesquisa",
+                    "A AKIRA está a compor a resposta com a pesquisa",
+                  ]
+                : [
+                    "A AKIRA está a analisar o teu pedido",
+                    "A AKIRA está a organizar as ideias",
+                    "A AKIRA está a estruturar a resposta",
+                    "A AKIRA está a compor a resposta",
+                  ];
     setRequestActivities((current) => ({
       ...current,
       [chatId]: { messages: nextActivityMessages, index: 0, slow: false },
@@ -1414,11 +1482,21 @@ export default function Page() {
     void send();
   }
 
+  function jumpToLatest() {
+    const thread = threadRef.current;
+    if (!thread) return;
+    shouldFollowMessages.current = true;
+    setAtLatest(true);
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    thread.scrollTo({ top: thread.scrollHeight, behavior: reduceMotion ? "auto" : "smooth" });
+  }
+
   function onKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
-    if (event.key === "Enter" && !event.shiftKey) {
-      event.preventDefault();
-      void send();
-    }
+    if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return;
+    const coarsePointer = window.matchMedia("(pointer: coarse)").matches;
+    if (coarsePointer && !event.ctrlKey && !event.metaKey) return;
+    event.preventDefault();
+    void send();
   }
 
   function chooseSuggestion(text: string) {
@@ -1654,6 +1732,7 @@ export default function Page() {
             <ArrowUpRight className="softedge-arrow" size={15} />
           </a>
           <a className="plans-link" href="/plans"><Sparkles size={14} /> Planos de assinatura</a>
+          <a className="plans-link" href="/tasks"><ListTodo size={14} /> Tarefas</a>
           {!authSnapshot?.authenticated && <a className="plans-link" href="/login"><Sparkles size={14} /> Entrar ou criar conta</a>}
           {chats.length > 0 && (
             <>
@@ -1709,7 +1788,9 @@ export default function Page() {
           ref={threadRef}
           onScroll={(event) => {
             const thread = event.currentTarget;
-            shouldFollowMessages.current = thread.scrollHeight - thread.scrollTop - thread.clientHeight < 100;
+            const nearLatest = thread.scrollHeight - thread.scrollTop - thread.clientHeight < 100;
+            shouldFollowMessages.current = nearLatest;
+            setAtLatest(nearLatest);
           }}
         >
           {messages.length === 0 && (
@@ -1771,6 +1852,18 @@ export default function Page() {
                         ? <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
                         : message.content}
                     </div>
+                    {message.role === "assistant" && message.context && (
+                      <details className="source-card">
+                        <summary><Search size={12} /> Fontes usadas nesta resposta <ChevronDown className="source-chevron" size={13} /></summary>
+                        <pre>{message.context}</pre>
+                      </details>
+                    )}
+                    {message.role === "user" && message.context && (
+                      <details className="source-card">
+                        <summary><Paperclip size={12} /> Conteúdo do ficheiro {message.attachmentName || "anexado"} <ChevronDown className="source-chevron" size={13} /></summary>
+                        <pre>{message.context}</pre>
+                      </details>
+                    )}
                     {message.image && (
                       <button
                         className="image-expand-trigger generated-image-trigger"
@@ -1889,6 +1982,18 @@ export default function Page() {
         </section>
 
         <div className="composer-zone">
+          {messages.length > 0 && !atLatest && !toolsOpen && (
+            <button
+              type="button"
+              className="jump-latest"
+              onClick={jumpToLatest}
+              aria-label="Ir para as mensagens mais recentes"
+              title="Ir para as mensagens mais recentes"
+            >
+              <ChevronDown size={15} aria-hidden="true" />
+              <span>Ir para o fim</span>
+            </button>
+          )}
           {attachment && (
             <div className="attachment-card">
               {attachment.dataUrl ? <img src={attachment.dataUrl} alt="Pré-visualização da imagem" /> : <span className="attachment-file-icon"><Paperclip size={16} /></span>}
@@ -1961,8 +2066,7 @@ export default function Page() {
                 disabled={!historyReady || busy}
                 onChange={(event) => {
                   setInput(event.target.value);
-                  event.target.style.height = 'auto';
-                  event.target.style.height = Math.min(event.target.scrollHeight, 300) + 'px';
+                  resizeComposerTextarea(event.target);
                 }}
                 onKeyDown={onKeyDown}
                 onPaste={(e) => {
@@ -1987,13 +2091,18 @@ export default function Page() {
                 }}
                 aria-label="A tua mensagem"
                 aria-invalid={messageExceedsLimit}
+                aria-describedby="composer-count"
               />
             {messageExceedsLimit && (
               <div className="composer-limit-error" role="alert">
                 A mensagem excede o limite de {messageCharacterLimit.toLocaleString("pt-PT")} caracteres. Encurta-a para a poderes enviar.
               </div>
             )}
-            <div className={`composer-count ${messageExceedsLimit ? "over-limit" : ""}`} aria-live="polite">
+            <div
+              id="composer-count"
+              className={`composer-count ${messageExceedsLimit ? "over-limit" : messageNearLimit ? "near-limit" : ""}`}
+              aria-live="polite"
+            >
               <span>{input.length.toLocaleString("pt-PT")} / {messageCharacterLimit.toLocaleString("pt-PT")} caracteres</span>
               <span title="Estimativa aproximada: cerca de 1 token por 4 caracteres; não é uma tokenização exata.">
                 ~{estimateTokens(input).toLocaleString("pt-PT")} tokens (estimativa)

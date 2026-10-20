@@ -42,10 +42,13 @@ function openDatabase(): Promise<IDBDatabase> {
 
   if (!databasePromise) {
     databasePromise = new Promise((resolve, reject) => {
-      const request = indexedDB.open(DATABASE, 1);
+      const request = indexedDB.open(DATABASE, 2);
       request.onupgradeneeded = () => {
         if (!request.result.objectStoreNames.contains(STORE)) {
           request.result.createObjectStore(STORE, { keyPath: "id" });
+        }
+        if (!request.result.objectStoreNames.contains("tasks")) {
+          request.result.createObjectStore("tasks", { keyPath: "id" });
         }
       };
       request.onsuccess = () => resolve(request.result);
