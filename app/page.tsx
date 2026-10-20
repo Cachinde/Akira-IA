@@ -1505,15 +1505,7 @@ export default function Page() {
           isImage: Boolean(message.image),
         }),
       });
-      const result = await readJson(response);
-      if (
-        !result ||
-        typeof result !== "object" ||
-        !("includedInTraining" in result) ||
-        result.includedInTraining !== (rating === "positive" && !message.image)
-      ) {
-        throw new Error("A AKIRA não confirmou a gravação do feedback.");
-      }
+      await readJson(response);
       setChats((current) => current.map((chat) => ({
         ...chat,
         messages: chat.messages.map((item) => item.id === message.id ? { ...item, feedback: rating } : item),

@@ -42,10 +42,16 @@ export async function POST(request: NextRequest) {
   try {
     const identity = getOrCreateUser(request);
     await saveMessageFeedback(identity.userId, messageId, rating, prompt.trim(), response.trim());
-    const akiraFeedback = await apiBotUiFeedback(messageId, rating, prompt.trim(), response.trim(), isImage);
+    let includedInTraining = false;
+    try {
+      const akiraFeedback = await apiBotUiFeedback(messageId, rating, prompt.trim(), response.trim(), isImage);
+      includedInTraining = akiraFeedback.includedInTraining;
+    } catch (spaceError) {
+      console.warn("A Space não registou o feedback agora; o registo ficou na base de dados.", spaceError);
+    }
     const result = NextResponse.json({
       saved: true,
-      includedInTraining: akiraFeedback.includedInTraining,
+      includedInTraining,
     });
     if (identity.created) setUserCookie(result, identity.userId);
     return result;
