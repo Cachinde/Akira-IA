@@ -21,7 +21,6 @@ import {
   Paperclip,
   Pencil,
   Search,
-  Send,
   Share2,
   ShieldAlert,
   Sparkles,
@@ -214,6 +213,7 @@ export default function Page() {
   const [toolsOpen, setToolsOpen] = useState(false);
   const [imgMode, setImgMode] = useState(false);
   const [sideOpen, setSideOpen] = useState(false);
+  const [sideHidden, setSideHidden] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("");
@@ -1625,7 +1625,7 @@ export default function Page() {
   }
 
   return (
-    <div className="shell">
+    <div className={`shell ${sideHidden ? "collapsed" : ""}`}>
       <aside className={`sidebar ${sideOpen ? "open" : ""}`}>
         <div className="side-top">
           <a href="/" className="brand-lockup" aria-label="AKIRA — início">
@@ -1717,6 +1717,15 @@ export default function Page() {
         </div>
 
         <div className="side-foot">
+          <a className="plans-link" href="/plans"><Sparkles size={14} /> Planos de assinatura</a>
+          <a className="plans-link" href="/tasks"><ListTodo size={14} /> Tarefas</a>
+          {!authSnapshot?.authenticated && <a className="plans-link" href="/login"><Sparkles size={14} /> Entrar ou criar conta</a>}
+          {chats.length > 0 && (
+            <>
+              <button onClick={exportHistory}><FileDown size={14} /> Exportar histórico</button>
+              <button className="clear-history" onClick={clearHistory}><Trash2 size={14} /> Limpar histórico</button>
+            </>
+          )}
           <a
             className="softedge-card"
             href="https://softedge-corporation.up.railway.app/"
@@ -1731,15 +1740,6 @@ export default function Page() {
             </span>
             <ArrowUpRight className="softedge-arrow" size={15} />
           </a>
-          <a className="plans-link" href="/plans"><Sparkles size={14} /> Planos de assinatura</a>
-          <a className="plans-link" href="/tasks"><ListTodo size={14} /> Tarefas</a>
-          {!authSnapshot?.authenticated && <a className="plans-link" href="/login"><Sparkles size={14} /> Entrar ou criar conta</a>}
-          {chats.length > 0 && (
-            <>
-              <button onClick={exportHistory}><FileDown size={14} /> Exportar histórico</button>
-              <button className="clear-history" onClick={clearHistory}><Trash2 size={14} /> Limpar histórico</button>
-            </>
-          )}
           <button className="profile-row account-profile-button" onClick={() => {
             setAuthMode(authSnapshot?.authenticated ? "account" : "profile");
             setAuthName(authSnapshot?.displayName || "");
@@ -1763,6 +1763,9 @@ export default function Page() {
       <main className="main">
         <header className="topbar">
           <div className="topbar-left">
+            <button className="side-toggle icon-button" onClick={() => setSideHidden((hidden) => !hidden)} aria-label="Mostrar ou ocultar histórico lateral">
+              <Menu size={19} />
+            </button>
             <button className="burger icon-button" onClick={() => setSideOpen(true)} aria-label="Abrir histórico">
               <Menu size={19} />
             </button>
@@ -2060,7 +2063,7 @@ export default function Page() {
                       ? attachment?.dataUrl
                         ? "Descreve a imagem a criar com base na referência…"
                         : "Descreve a imagem que tens em mente…"
-                      : "Escreve a tua mensagem…"
+                      : "Pergunta qualquer coisa…"
                 }
                 value={input}
                 disabled={!historyReady || busy}
@@ -2157,7 +2160,7 @@ export default function Page() {
                         : "Enviar mensagem"
                   }
                 >
-                  {busy ? <LoaderCircle className="spin" size={16} /> : imgMode || automaticImagePrompt ? <ImagePlus size={16} /> : <Send size={15} />}
+                  {busy ? <LoaderCircle className="spin" size={16} /> : imgMode || automaticImagePrompt ? <ImagePlus size={16} /> : <ArrowUp size={17} strokeWidth={2.2} />}
                 </button>
               </div>
             </div>
