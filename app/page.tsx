@@ -213,8 +213,9 @@ export default function Page() {
   const [activeSessionVersion, setActiveSessionVersion] = useState(0);
   const [pendingChatIds, setPendingChatIds] = useState<Set<string>>(() => new Set());
   const [queuedCounts, setQueuedCounts] = useState<Record<string, number>>({});
+  const [activityTick, setActivityTick] = useState(0);
   const [requestActivities, setRequestActivities] = useState<
-    Record<string, { messages: string[]; index: number; slow: boolean }>
+    Record<string, { messages: string[]; index: number; slow: boolean; startedAt: number }>
   >({});
   const [greetingRun, setGreetingRun] = useState(0);
   const [typedGreeting, setTypedGreeting] = useState("");
@@ -283,6 +284,10 @@ export default function Page() {
   const activity = activeId ? requestActivities[activeId] : undefined;
   const activeSessionKey = `${activeSessionVersion}:${activeId ?? "new"}`;
   const busy = fileReadingChatKeys.has(activeSessionKey);
+  const activitySeconds =
+    activity?.startedAt && (activeChatPending || busy)
+      ? Math.max(1, Math.round((Date.now() - activity.startedAt) / 1000))
+      : null;
   const automaticImagePrompt =
     !imgMode &&
     !editTarget &&
@@ -415,6 +420,12 @@ export default function Page() {
       if (retryTimer) clearTimeout(retryTimer);
     };
   }, [sessionNonce]);
+
+  useEffect(() => {
+    if (!activeChatPending && !busy) return;
+    const timer = window.setInterval(() => setActivityTick((tick) => tick + 1), 1000);
+    return () => window.clearInterval(timer);
+  }, [activeChatPending, busy]);
 
   useEffect(() => {
     if (!authReady || messages.length > 0) return;
@@ -1348,14 +1359,14 @@ export default function Page() {
                   ];
     setRequestActivities((current) => ({
       ...current,
-      [chatId]: { messages: nextActivityMessages, index: 0, slow: false },
+      [chatId]: { messages: nextActivityMessages, index: 0, slow: false, startedAt: Date.now() },
     }));
     const slowWaitTimer = setTimeout(() => {
       setRequestActivities((current) => ({
         ...current,
         [chatId!]: current[chatId!]
           ? { ...current[chatId!], slow: true }
-          : { messages: nextActivityMessages, index: 0, slow: true },
+          : { messages: nextActivityMessages, index: 0, slow: true, startedAt: Date.now() },
       }));
     }, 8_000);
     if (!backgroundSend) {
@@ -1972,6 +1983,11 @@ export default function Page() {
                   <div className="typing" aria-live="polite">
                     <LoaderCircle size={15} className="spin" aria-hidden="true" />
                     <span>{busy ? "A ler o ficheiro" : activity?.messages[activity.index] || "A AKIRA está a pensar"}</span>
+                    {activitySeconds !== null && (
+                      <span className="typing-seconds" title="Tempo desde que o pedido começou">
+                        {activitySeconds}s
+                      </span>
+                    )}
                     <span className="typing-dots" aria-hidden="true"><i /><i /><i /></span>
                     {!busy && activity?.slow && (
                       <span className="typing-note">O pedido está a demorar. Mantém esta página aberta; a AKIRA continua a processá-lo.</span>
