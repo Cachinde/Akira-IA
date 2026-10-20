@@ -214,7 +214,6 @@ export default function Page() {
   const [imgMode, setImgMode] = useState(false);
   const [sideOpen, setSideOpen] = useState(false);
   const [sideHidden, setSideHidden] = useState(false);
-  const [searchOpen, setSearchOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("");
   const [statusKind, setStatusKind] = useState<"error" | "success" | "">("");
@@ -1645,23 +1644,16 @@ export default function Page() {
 
         <div className="history-heading">
           <span>Histórico</span>
-          <button
-            className="icon-button search-toggle"
-            onClick={() => { setSearchOpen((open) => !open); setSearch(""); }}
-            aria-label="Pesquisar no histórico"
-          >
-            <Search size={15} />
-          </button>
         </div>
-        {searchOpen && (
-          <label className="history-search">
-            <Search size={14} />
-            <input autoFocus value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Pesquisar conversas" />
-            <button className="icon-button" onClick={() => { setSearch(""); setSearchOpen(false); }} aria-label="Fechar pesquisa">
+        <label className="history-search">
+          <Search size={14} />
+          <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Pesquisar conversas" />
+          {search && (
+            <button className="icon-button" onClick={() => setSearch("")} aria-label="Limpar pesquisa">
               <X size={14} />
             </button>
-          </label>
-        )}
+          )}
+        </label>
 
         <div className="hist-list">
           {!historyReady && <div className="history-empty">A carregar conversas…</div>}
@@ -2066,7 +2058,7 @@ export default function Page() {
                       : "Pergunta qualquer coisa…"
                 }
                 value={input}
-                disabled={!historyReady || busy}
+                disabled={busy}
                 onChange={(event) => {
                   setInput(event.target.value);
                   resizeComposerTextarea(event.target);
