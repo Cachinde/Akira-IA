@@ -1328,7 +1328,7 @@ export default function Page() {
             "A AKIRA está a preparar a composição visual",
             "A AKIRA está a gerar uma nova imagem com base na referência",
           ]
-      : !backgroundSend && imgMode
+      : !backgroundSend && (imgMode || automaticImageRequest)
         ? [
             "A AKIRA está a preparar a imagem",
             "A AKIRA está a compor os elementos visuais",
@@ -1367,7 +1367,11 @@ export default function Page() {
         index: 0,
         slow: false,
         startedAt: Date.now(),
-        eta: !backgroundSend && (editTarget || referenceImageRequest || imgMode) ? 45 : undefined,
+        eta:
+          !backgroundSend &&
+          (editTarget || referenceImageRequest || imgMode || automaticImageRequest)
+            ? 45
+            : undefined,
       },
     }));
     const slowWaitTimer = setTimeout(() => {
@@ -1377,14 +1381,23 @@ export default function Page() {
           ? {
               ...current[chatId!],
               slow: true,
-              eta: current[chatId!].eta ?? (!backgroundSend && (editTarget || referenceImageRequest || imgMode) ? 45 : undefined),
+              eta:
+                current[chatId!].eta ??
+                (!backgroundSend &&
+                (editTarget || referenceImageRequest || imgMode || automaticImageRequest)
+                  ? 45
+                  : undefined),
             }
           : {
               messages: nextActivityMessages,
               index: 0,
               slow: true,
               startedAt: Date.now(),
-              eta: !backgroundSend && (editTarget || referenceImageRequest || imgMode) ? 45 : undefined,
+              eta:
+                !backgroundSend &&
+                (editTarget || referenceImageRequest || imgMode || automaticImageRequest)
+                  ? 45
+                  : undefined,
             },
       }));
     }, 8_000);
@@ -2026,9 +2039,6 @@ export default function Page() {
                       </span>
                     )}
                     <span className="typing-dots" aria-hidden="true"><i /><i /><i /></span>
-                    {!busy && activity?.slow && (
-                      <span className="typing-note">O pedido está a demorar. Mantém esta página aberta; a AKIRA continua a processá-lo.</span>
-                    )}
                   </div>
                 </div>
               )}
