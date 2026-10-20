@@ -488,7 +488,7 @@ export default function Page() {
     const timer = setTimeout(() => {
       setStatus("");
       setStatusKind("");
-    }, statusKind === "error" ? 6200 : 2800);
+    }, statusKind === "error" ? 5000 : 2400);
     return () => clearTimeout(timer);
   }, [status, statusKind]);
 
@@ -1967,7 +1967,11 @@ export default function Page() {
                 }
                 value={input}
                 disabled={!historyReady || busy}
-                onChange={(event) => setInput(event.target.value)}
+                onChange={(event) => {
+                  setInput(event.target.value);
+                  event.target.style.height = 'auto';
+                  event.target.style.height = Math.min(event.target.scrollHeight, 300) + 'px';
+                }}
                 onKeyDown={onKeyDown}
                 onPaste={(e) => {
                   const items = e.clipboardData?.items;
@@ -2178,6 +2182,7 @@ export default function Page() {
       )}
       {status && !storageError && (
         <div
+          key={`${status}-${statusKind}`}
           className={`toast-note ${statusKind === "error" ? "toast-error" : statusKind === "success" ? "toast-good" : ""}`}
           role={statusKind === "error" ? "alert" : "status"}
         >

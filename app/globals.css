@@ -274,6 +274,7 @@ button:disabled { cursor: not-allowed; }
 .composer { width: min(100%, 710px); padding: 12px 13px 9px 16px; border: 1px solid rgba(255,255,255,.09); border-radius: 18px; background: #1e1e21; box-shadow: 0 12px 42px rgba(0,0,0,.24), inset 0 1px rgba(255,255,255,.025); transition: border-color .2s ease, box-shadow .2s ease; }
 .composer:focus-within { border-color: rgba(199,183,255,.27); box-shadow: 0 0 0 3px rgba(199,183,255,.035), 0 12px 42px rgba(0,0,0,.24); }
 .composer textarea { display: block; width: 100%; min-height: 37px; max-height: 300px; overflow-y: auto; resize: vertical; padding: 2px 1px 9px; border: 0; outline: 0; background: transparent; color: #efedf1; font-size: 13.5px; line-height: 1.55; }
+.composer textarea:focus { min-height: 40px; }
 .composer textarea:focus-visible { outline: 0; }
 .composer textarea::placeholder { color: #8a8692; }
 .composer-limit-error { margin: 0 1px 7px; color: #f0a8a8; font-size: 11px; line-height: 1.45; }
@@ -312,10 +313,10 @@ button:disabled { cursor: not-allowed; }
 .image-mode-bar > label { position: relative; display: inline-flex; align-items: center; gap: 7px; margin-left: auto; color: #96919c; font-size: 10px; }
 .image-mode-bar select { appearance: none; padding: 5px 21px 5px 7px; border: 1px solid var(--line); border-radius: 8px; outline: 0; background: #242327; color: #d1cdd7; cursor: pointer; font-size: 10px; }
 .image-mode-bar label > svg { position: absolute; right: 5px; pointer-events: none; }
-.toast-note { position: fixed; z-index: 46; top: max(12px, calc(env(safe-area-inset-top) + 10px)); left: 50%; transform: translateX(-50%); display: inline-flex; align-items: center; gap: 8px; max-width: min(92vw, 460px); padding: 8px 8px 8px 9px; border: 1px solid rgba(199,183,255,.26); border-radius: 14px; background: rgba(23,22,28,.88); color: #e7e2f0; font-size: 12px; box-shadow: 0 14px 40px rgba(0,0,0,.5); -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px); animation: toast-in .26s ease both, toast-out .32s 2.5s ease both; }
+.toast-note { position: fixed; z-index: 46; top: max(12px, calc(env(safe-area-inset-top) + 10px)); left: 50%; transform: translateX(-50%); display: inline-flex; align-items: center; gap: 8px; max-width: min(92vw, 460px); padding: 8px 8px 8px 9px; border: 1px solid rgba(199,183,255,.26); border-radius: 14px; background: rgba(23,22,28,.88); color: #e7e2f0; font-size: 12px; box-shadow: 0 14px 40px rgba(0,0,0,.5); -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px); animation: toast-in .26s ease both, toast-out .3s 2.15s ease both; }
 .toast-note.toast-good { border-color: rgba(155,225,201,.3); }
 .toast-note.toast-good .toast-icon { background: rgba(97,164,133,.18); color: #9adfc4; }
-.toast-note.toast-error { border-color: rgba(225,145,145,.28); color: #f0d0d0; animation: toast-in .26s ease both, toast-out .32s 5.85s ease both; }
+.toast-note.toast-error { border-color: rgba(225,145,145,.28); color: #f0d0d0; animation: toast-in .26s ease both, toast-out .3s 4.65s ease both; }
 .toast-note.toast-error .toast-icon { background: rgba(112,47,47,.24); color: #eba9a9; }
 .toast-icon { display: grid; width: 24px; height: 24px; flex: 0 0 auto; place-items: center; border-radius: 999px; background: rgba(199,183,255,.14); color: #cfbef8; }
 .toast-text { overflow-wrap: anywhere; }
