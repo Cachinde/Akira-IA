@@ -51,7 +51,6 @@ export const metadata: Metadata = {
       "max-video-preview": -1,
     },
   },
-  icons: { icon: "/akira-logo.png" },
   openGraph: {
     type: "website",
     locale: "pt_PT",
