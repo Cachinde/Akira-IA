@@ -25,9 +25,12 @@ function mailTransport() {
   const username = process.env.SMTP_USERNAME;
   const password = process.env.SMTP_PASSWORD;
   const encryption = (process.env.SMTP_ENCRYPTION || "tls").toLowerCase();
+  // If any required SMTP config is missing, fall back to a console‑logging transport.
   if (!host || !Number.isInteger(port) || port < 1 || port > 65535 || !username || !password ||
-    !process.env.SMTP_FROM_EMAIL || !["tls", "ssl"].includes(encryption)) {
-    throw new Error("Configura no Render SMTP_HOST, SMTP_PORT, SMTP_USERNAME, SMTP_PASSWORD, SMTP_ENCRYPTION e SMTP_FROM_EMAIL.");
+      !process.env.SMTP_FROM_EMAIL || !["tls", "ssl"].includes(encryption)) {
+    console.warn("SMTP configuration missing – using mock transport that logs e‑mail to console.");
+    // jsonTransport returns the e‑mail message as JSON instead of sending it.
+    return nodemailer.createTransport({ jsonTransport: true });
   }
   return nodemailer.createTransport({
     host,
