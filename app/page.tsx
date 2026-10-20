@@ -152,6 +152,16 @@ async function readJson(response: Response) {
   return data;
 }
 
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error("O pedido recebeu tempo demais e foi cancelado.")), ms);
+    promise.then(
+      (value) => { clearTimeout(timer); resolve(value); },
+      (error) => { clearTimeout(timer); reject(error); },
+    );
+  });
+}
+
 async function waitForJob(endpoint: string, jobId: string): Promise<unknown> {
   let delay = 1_500;
   while (true) {
@@ -240,6 +250,7 @@ export default function Page() {
   const [authName, setAuthName] = useState("");
   const [authEmail, setAuthEmail] = useState("");
   const [authBusy, setAuthBusy] = useState(false);
+  const [sessionNonce, setSessionNonce] = useState(0);
   const [authLinkSent, setAuthLinkSent] = useState(false);
   const [authMessage, setAuthMessage] = useState("");
   const [chatMenu, setChatMenu] = useState<string | null>(null);
@@ -261,6 +272,7 @@ export default function Page() {
   const activeSessionVersionRef = useRef(0);
   const chatsRef = useRef(chats);
   chatsRef.current = chats;
+  const sessionToastedRef = useRef(false);
 
   const activeChat = chats.find((chat) => chat.id === activeId) || null;
   const messages = activeChat?.messages || [];
@@ -336,23 +348,40 @@ export default function Page() {
 
   useEffect(() => {
     let active = true;
-    fetch("/api/auth/session", { cache: "no-store" })
-      .then(readJson)
-      .then((snapshot: unknown) => {
-        if (!active || !snapshot || typeof snapshot !== "object") return;
-        const auth = snapshot as AuthSnapshot;
-        setAuthSnapshot(auth);
-        setAuthName(auth.displayName || "");
-        if (!auth.displayName) setAuthMode("profile");
-        setAuthReady(true);
-      })
-      .catch((error: unknown) => {
-        if (!active) return;
-        setStatus(error instanceof Error ? error.message : "Não foi possível carregar a conta.");
-        setStatusKind("error");
-        setAuthReady(true);
-        setHistoryReady(true);
-      });
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
+    let attempt = 0;
+    const loadSession = () => {
+      attempt += 1;
+      withTimeout(
+        fetch("/api/auth/session", { cache: "no-store" }).then(readJson),
+        attempt === 1 ? 15_000 : 10_000,
+      )
+        .then((snapshot: unknown) => {
+          if (!active || !snapshot || typeof snapshot !== "object") return;
+          const auth = snapshot as AuthSnapshot;
+          setAuthSnapshot(auth);
+          setAuthName(auth.displayName || "");
+          if (!auth.displayName) setAuthMode("profile");
+          setAuthReady(true);
+          sessionToastedRef.current = false;
+        })
+        .catch((error: unknown) => {
+          if (!active) return;
+          if (!sessionToastedRef.current) {
+            setStatus("A AKIRA está a demorar a ligar à tua conta. Vamos tentar outra vez; já podes escrever.");
+            setStatusKind("error");
+            sessionToastedRef.current = true;
+          } else {
+            console.warn("A sessão AKIRA continua lenta; nova tentativa agendada.", error);
+          }
+          setAuthReady(true);
+          setHistoryReady(true);
+          retryTimer = setTimeout(() => {
+            if (active) loadSession();
+          }, 12_000);
+        });
+    };
+    loadSession();
     const accountResult = new URLSearchParams(window.location.search).get("account");
     const authResult = new URLSearchParams(window.location.search).get("auth");
     if (authResult === "success") {
@@ -383,8 +412,9 @@ export default function Page() {
     }
     return () => {
       active = false;
+      if (retryTimer) clearTimeout(retryTimer);
     };
-  }, []);
+  }, [sessionNonce]);
 
   useEffect(() => {
     if (!authReady || messages.length > 0) return;
@@ -1039,6 +1069,14 @@ export default function Page() {
 
   async function send(text?: string, targetChatId?: string) {
     const backgroundSend = Boolean(targetChatId);
+    if (!authSnapshot) {
+      if (!backgroundSend) {
+        setStatus("A AKIRA ainda está a ligar a tua conta. Tenta enviar de novo em instantes.");
+        setStatusKind("error");
+      }
+      setSessionNonce((current) => current + 1);
+      return;
+    }
     const rawContent = text ?? input;
     const content = rawContent.trim();
     const automaticImageRequest =
@@ -2143,7 +2181,7 @@ export default function Page() {
                 <button
                   type="submit"
                   className="send-btn"
-                  disabled={!historyReady || busy || (!input.trim() && !attachment)}
+                  disabled={busy || (!input.trim() && !attachment)}
                   aria-label={
                     activeChatPending
                       ? "Adicionar à fila"
