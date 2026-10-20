@@ -215,7 +215,7 @@ export default function Page() {
   const [queuedCounts, setQueuedCounts] = useState<Record<string, number>>({});
   const [activityTick, setActivityTick] = useState(0);
   const [requestActivities, setRequestActivities] = useState<
-    Record<string, { messages: string[]; index: number; slow: boolean; startedAt: number }>
+    Record<string, { messages: string[]; index: number; slow: boolean; startedAt: number; eta?: number }>
   >({});
   const [greetingRun, setGreetingRun] = useState(0);
   const [typedGreeting, setTypedGreeting] = useState("");
@@ -1359,14 +1359,33 @@ export default function Page() {
                   ];
     setRequestActivities((current) => ({
       ...current,
-      [chatId]: { messages: nextActivityMessages, index: 0, slow: false, startedAt: Date.now() },
+      // Calculador de progresso (como a estimativa de tokens do composer):
+      // pedidos de imagem têm tempo típico ~45s; a UI mostra "~Xs restantes
+      // (estimativa)" + barra de progresso enquanto a geração processa.
+      [chatId]: {
+        messages: nextActivityMessages,
+        index: 0,
+        slow: false,
+        startedAt: Date.now(),
+        eta: !backgroundSend && (editTarget || referenceImageRequest || imgMode) ? 45 : undefined,
+      },
     }));
     const slowWaitTimer = setTimeout(() => {
       setRequestActivities((current) => ({
         ...current,
         [chatId!]: current[chatId!]
-          ? { ...current[chatId!], slow: true }
-          : { messages: nextActivityMessages, index: 0, slow: true, startedAt: Date.now() },
+          ? {
+              ...current[chatId!],
+              slow: true,
+              eta: current[chatId!].eta ?? (!backgroundSend && (editTarget || referenceImageRequest || imgMode) ? 45 : undefined),
+            }
+          : {
+              messages: nextActivityMessages,
+              index: 0,
+              slow: true,
+              startedAt: Date.now(),
+              eta: !backgroundSend && (editTarget || referenceImageRequest || imgMode) ? 45 : undefined,
+            },
       }));
     }, 8_000);
     if (!backgroundSend) {
@@ -1896,7 +1915,7 @@ export default function Page() {
                         ? <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
                         : message.content}
                     </div>
-                    {message.role === "assistant" && message.context && (
+                    {message.role === "assistant" && message.context && !message.image && (
                       <details className="source-card">
                         <summary><Search size={12} /> Fontes usadas nesta resposta <ChevronDown className="source-chevron" size={13} /></summary>
                         <pre>{message.context}</pre>
@@ -1986,6 +2005,24 @@ export default function Page() {
                     {activitySeconds !== null && (
                       <span className="typing-seconds" title="Tempo desde que o pedido começou">
                         {activitySeconds}s
+                      </span>
+                    )}
+                    {activity?.eta && activitySeconds !== null && (
+                      <span
+                        className="typing-eta"
+                        title="Estimativa aproximada para geração de imagens; depende do modelo e da fila."
+                        aria-live="off"
+                      >
+                        (~{Math.max(1, activity.eta - activitySeconds)}s restantes, estimativa)
+                      </span>
+                    )}
+                    {activity?.eta && activitySeconds !== null && (
+                      <span className="typing-progress" aria-hidden="true">
+                        <i
+                          style={{
+                            width: `${Math.min(95, Math.max(4, Math.round((activitySeconds / activity.eta) * 100)))}%`,
+                          }}
+                        />
                       </span>
                     )}
                     <span className="typing-dots" aria-hidden="true"><i /><i /><i /></span>
