@@ -484,6 +484,15 @@ export default function Page() {
   }, [quotaNotice?.retryAt]);
 
   useEffect(() => {
+    if (!status) return;
+    const timer = setTimeout(() => {
+      setStatus("");
+      setStatusKind("");
+    }, statusKind === "error" ? 6200 : 2800);
+    return () => clearTimeout(timer);
+  }, [status, statusKind]);
+
+  useEffect(() => {
     if (
       authSnapshot &&
       !authSnapshot.authenticated &&
@@ -1084,7 +1093,7 @@ export default function Page() {
         updateQueue(chatId, (queue) => [...queue, content]);
         delete draftsRef.current[chatId];
         setInput("");
-        setStatus("Mensagem adicionada à fila. A AKIRA responde assim que terminar a resposta atual.");
+        setStatus("Mensagem adicionada à fila.");
         setStatusKind("success");
         inputRef.current?.focus();
       } else {
@@ -1413,6 +1422,15 @@ export default function Page() {
   }
 
   function chooseSuggestion(text: string) {
+    if (authSnapshot && !authSnapshot.displayName) {
+      setAuthMode("profile");
+    } else if (
+      authSnapshot &&
+      !authSnapshot.authenticated &&
+      authSnapshot.guestMessagesUsed >= authSnapshot.guestMessageLimit
+    ) {
+      setAuthMode("account");
+    }
     if (!text) {
       setAttachment(null);
       setEditTarget(null);
@@ -1429,9 +1447,11 @@ export default function Page() {
     try {
       await navigator.clipboard.writeText(message.content);
       setCopiedId(message.id);
+      setStatus("Mensagem copiada.");
+      setStatusKind("");
       window.setTimeout(() => setCopiedId((current) => current === message.id ? null : current), 1800);
     } catch (error) {
-      setStatus(error instanceof Error ? `Não foi possível copiar a resposta: ${error.message}` : "Não foi possível copiar a resposta.");
+      setStatus("Não foi possível copiar a resposta.");
       setStatusKind("error");
     }
   }
@@ -1499,10 +1519,8 @@ export default function Page() {
         messages: chat.messages.map((item) => item.id === message.id ? { ...item, feedback: rating } : item),
       })));
       setStatus(message.image
-        ? "Obrigado. A avaliação da imagem foi guardada para revisão e não será usada como exemplo de treino."
-        : rating === "positive"
-        ? "Obrigado. O 👍 foi guardado na AKIRA e entrou no conjunto considerado nos próximos ciclos de treino; a execução depende do agendamento e do mínimo de exemplos."
-        : "Obrigado. O 👎 foi guardado para revisão e não entra no conjunto de treino.");
+        ? "Avaliação da imagem guardada. Obrigado."
+        : "Feedback guardado. Obrigado.");
       setStatusKind("success");
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Não foi possível guardar o feedback.");
@@ -1528,10 +1546,8 @@ export default function Page() {
         throw new Error("Não foi possível criar o link da resposta.");
       }
       await navigator.clipboard.writeText(result.url);
-      setStatus(message.image
-        ? "Link copiado. Inclui a pergunta, a resposta e a imagem da AKIRA."
-        : "Link da conversa copiado. Inclui a mensagem original e a resposta da AKIRA.");
-      setStatusKind("success");
+      setStatus("Link de partilha copiado.");
+      setStatusKind("");
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Não foi possível partilhar a resposta.");
       setStatusKind("error");
@@ -1881,14 +1897,6 @@ export default function Page() {
         </section>
 
         <div className="composer-zone">
-          {(status || storageError) && (
-            <div className={`status-notice ${statusKind === "error" || storageError ? "status-error" : ""}`} role="status">
-              <span>{storageError || status}</span>
-              <button className="icon-button" onClick={() => { setStatus(""); setStatusKind(""); setStorageError(""); }} aria-label="Fechar aviso">
-                <X size={14} />
-              </button>
-            </div>
-          )}
           {attachment && (
             <div className="attachment-card">
               {attachment.dataUrl ? <img src={attachment.dataUrl} alt="Pré-visualização da imagem" /> : <span className="attachment-file-icon"><Paperclip size={16} /></span>}
@@ -2158,6 +2166,33 @@ export default function Page() {
            </div>
          </section>
        </div>
+      )}
+      {storageError && (
+        <div className="toast-note toast-error toast-sticky" role="alert">
+          <span className="toast-icon"><ShieldAlert size={13} /></span>
+          <span className="toast-text">{storageError}</span>
+          <button className="icon-button" onClick={() => setStorageError("")} aria-label="Fechar aviso">
+            <X size={13} />
+          </button>
+        </div>
+      )}
+      {status && !storageError && (
+        <div
+          className={`toast-note ${statusKind === "error" ? "toast-error" : statusKind === "success" ? "toast-good" : ""}`}
+          role={statusKind === "error" ? "alert" : "status"}
+        >
+          <span className="toast-icon">
+            {statusKind === "error"
+              ? <ShieldAlert size={13} />
+              : statusKind === "success"
+                ? <Check size={13} />
+                : <Sparkles size={13} />}
+          </span>
+          <span className="toast-text">{status}</span>
+          <button className="icon-button" onClick={() => { setStatus(""); setStatusKind(""); }} aria-label="Fechar aviso">
+            <X size={13} />
+          </button>
+        </div>
       )}
       {authMode && (
         <div className="account-overlay" role="presentation">
