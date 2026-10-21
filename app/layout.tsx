@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import { DM_Sans, Manrope } from "next/font/google";
 import "./globals.css";
 import { getPublicSiteUrl } from "@/lib/site-url";
-import KeepaliveStatus from "@/components/keepalive-status";
 
 const dmSans = DM_Sans({
   subsets: ["latin"],
@@ -126,7 +125,6 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData).replace(/</g, "\\u003c") }}
         />
         {children}
-        <KeepaliveStatus />
       </body>
     </html>
   );

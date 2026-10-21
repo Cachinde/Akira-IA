@@ -10,7 +10,9 @@ export async function register() {
     void fetch(`${url}?depth=0&token=${encodeURIComponent(token)}&from=akira-cold-start`, {
       method: "GET",
       signal: AbortSignal.timeout(8000),
-    }).catch(() => {});
+    })
+      .then((r) => console.log(`[KEEPALIVE] ressurreição: semente de cadeia disparada (HTTP ${r.status})`))
+      .catch((e) => console.log(`[KEEPALIVE] ressurreição: falhou ${(e && e.message) || e}`));
   } catch {
     // nunca bloquear o boot da app por causa do keep-alive
   }
