@@ -3,11 +3,16 @@ import React from "react";
 type MetricProps = { label: string; value: string; trend?: string };
 type Step = { title: string; detail?: string };
 type Result = { title: string; subtitle?: string; description?: string; url?: string };
+type TableProps = { columns: string[]; rows: string[][] };
+type KeyValueItem = { label: string; value: string };
 
-interface RenderSpec {
-  component: "Card" | "Metric" | "Steps" | "ResultCard";
-  props: Record<string, unknown>;
-}
+type RenderSpec =
+  | { component: "Card"; props: Record<string, unknown> }
+  | { component: "Metric"; props: MetricProps }
+  | { component: "Steps"; props: { items: Step[] } }
+  | { component: "ResultCard"; props: Result }
+  | { component: "Table"; props: TableProps }
+  | { component: "KeyValue"; props: { items: KeyValueItem[] } };
 
 const REGISTRY: Record<RenderSpec["component"], React.ComponentType<any>> = {
   Card: ({ props }: any) => (
@@ -42,6 +47,34 @@ const REGISTRY: Record<RenderSpec["component"], React.ComponentType<any>> = {
       {description && <p className="ui-result-card-desc">{description}</p>}
       {url && <a href={String(url)} target="_blank" rel="noopener noreferrer" className="ui-result-card-link">Ver detalhes</a>}
     </div>
+  ),
+  Table: ({ columns, rows }: TableProps) => (
+    <div className="ui-table-wrap" role="region" aria-label="Tabela de resposta" tabIndex={0}>
+      <table className="ui-table">
+        <thead>
+          <tr>{columns.map((column, index) => <th key={index} scope="col">{column}</th>)}</tr>
+        </thead>
+        <tbody>
+          {rows.map((row, rowIndex) => (
+            <tr key={rowIndex}>
+              {columns.map((_, columnIndex) => (
+                <td key={columnIndex}>{row[columnIndex] ?? ""}</td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  ),
+  KeyValue: ({ items = [] }: { items: KeyValueItem[] }) => (
+    <dl className="ui-key-value">
+      {items.map((item, index) => (
+        <div key={index} className="ui-key-value-row">
+          <dt>{item.label}</dt>
+          <dd>{item.value}</dd>
+        </div>
+      ))}
+    </dl>
   ),
 };
 

@@ -118,6 +118,28 @@ function UiSpecSegment({ segment }: UiSpecSegmentProps) {
   return <Component {...(segment.spec.props as Record<string, unknown>)} />;
 }
 
+function AssistantMessageContent({
+  content,
+  uiSpec,
+}: {
+  content: string;
+  uiSpec?: unknown;
+}) {
+  const spec = parseUiSpec(uiSpec);
+  const displayContent = spec ? replaceMarkdownTableWithUiSpec(content, spec) : content;
+  const segments = parseUiSpecBlocks(displayContent);
+  if (!segments.some((segment) => segment.kind === "spec")) {
+    return <ReactMarkdown remarkPlugins={[remarkGfm]}>{displayContent}</ReactMarkdown>;
+  }
+  return (
+    <div className="ui-specs">
+      {segments.map((segment, segmentIndex) => (
+        <UiSpecSegment key={segmentIndex} segment={segment} />
+      ))}
+    </div>
+  );
+}
+
 type AuthMode = "profile" | "account" | null;
 
 class AccountRequiredError extends Error {}
@@ -191,11 +213,67 @@ function responseError(data: unknown, fallback: string) {
   return fallback;
 }
 
-function parseUiSpec(result: any) {
-  if (result.ui_spec && typeof result.ui_spec === "object" && typeof result.ui_spec.component === "string" && result.ui_spec.props && typeof result.ui_spec.props === "object") {
-    return { component: result.ui_spec.component, props: result.ui_spec.props };
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === "string");
+}
+
+function isStringMatrix(value: unknown): value is string[][] {
+  return Array.isArray(value) && value.every((row) => isStringArray(row));
+}
+
+function parseUiSpec(value: unknown): RenderSpec | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  const candidate = record.uiSpec ?? record.ui_spec ?? value;
+  if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return null;
+  const spec = candidate as Record<string, unknown>;
+  if (spec.component !== "Table" || !spec.props || typeof spec.props !== "object") return null;
+  const props = spec.props as Record<string, unknown>;
+  if (!isStringArray(props.columns) || !isStringMatrix(props.rows)) {
+    return null;
   }
-  return null;
+  return {
+    component: "Table",
+    props: { columns: props.columns, rows: props.rows },
+  };
+}
+
+function markdownTableCells(line: string): string[] | null {
+  const trimmed = line.trim();
+  if (!trimmed.includes("|")) return null;
+  const body = trimmed.replace(/^\|/, "").replace(/\|$/, "");
+  return body.split("|").map((cell) =>
+    cell.replace(/\*\*/g, "").replace(/`/g, "").trim().replace(/\s+/g, " "),
+  );
+}
+
+function replaceMarkdownTableWithUiSpec(content: string, spec: RenderSpec): string {
+  if (spec.component !== "Table") return content;
+  const lines = content.split(/\r?\n/);
+  const matches = (line: string, cells: string[]) => {
+    const parsed = markdownTableCells(line);
+    return parsed?.length === cells.length && parsed.every((cell, index) => cell === cells[index]);
+  };
+
+  for (let start = 0; start + spec.props.rows.length + 1 < lines.length; start += 1) {
+    if (!matches(lines[start], spec.props.columns)) continue;
+    const separator = markdownTableCells(lines[start + 1]);
+    if (
+      !separator ||
+      separator.length !== spec.props.columns.length ||
+      !separator.every((cell) => /^:?-{3,}:?$/.test(cell))
+    ) {
+      continue;
+    }
+    const rowsMatch = spec.props.rows.every((row, index) =>
+      matches(lines[start + index + 2], row),
+    );
+    if (!rowsMatch) continue;
+    const marker = `:::ui\n${JSON.stringify(spec)}\n:::`;
+    lines.splice(start, spec.props.rows.length + 2, marker);
+    return lines.join("\n");
+  }
+  return content;
 }
 
 async function readJson(response: Response) {
@@ -735,7 +813,8 @@ export default function Page() {
       "reply" in result &&
       typeof result.reply === "string"
     ) {
-      assistantMessage = makeMessage("assistant", result.reply);
+      const uiSpec = parseUiSpec(result);
+      assistantMessage = makeMessage("assistant", result.reply, uiSpec ? { uiSpec } : {});
     } else {
       assistantMessage = makeMessage("assistant", "A AKIRA devolveu um resultado inválido para este pedido.");
     }
@@ -2016,15 +2095,7 @@ export default function Page() {
                     )}
                     <div className={`bubble ${message.role === "assistant" ? "markdown-content" : ""}`}>
                       {message.role === "assistant" ? (
-                        (parseUiSpecBlocks(message.content).some((segment) => segment.kind === "spec")
-                          ? (
-                            <div className="ui-specs">
-                              {parseUiSpecBlocks(message.content).map((segment, segmentIndex) => (
-                                <UiSpecSegment key={segmentIndex} segment={segment} />
-                              ))}
-                            </div>
-                          )
-                          : <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>)
+                        <AssistantMessageContent content={message.content} uiSpec={message.uiSpec} />
                       ) : (
                         message.content
                       )}

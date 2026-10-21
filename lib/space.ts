@@ -11,6 +11,7 @@ export type ChatResult = {
   image?: string;
   providerModel?: string;
   imageContext?: string;
+  uiSpec?: { component: string; props: Record<string, unknown> };
 };
 export type ImageResult = {
   image: string;
@@ -25,6 +26,27 @@ function imageContextOf(output: Record<string, unknown>): { imageContext?: strin
     ? { imageContext: value.trim().slice(0, 2000) }
     : {};
 }
+
+function uiSpecOf(value: unknown): ChatResult["uiSpec"] {
+  if (
+    !value ||
+    typeof value !== "object" ||
+    Array.isArray(value) ||
+    !("component" in value) ||
+    typeof value.component !== "string" ||
+    !("props" in value) ||
+    !value.props ||
+    typeof value.props !== "object" ||
+    Array.isArray(value.props)
+  ) {
+    return undefined;
+  }
+  return {
+    component: value.component,
+    props: value.props as Record<string, unknown>,
+  };
+}
+
 export type WebSearchResult = { query: string; summary: string; links: string[] };
 
 export class ContentModerationError extends Error {
@@ -254,6 +276,7 @@ export async function apiChat(
     image?: unknown;
     providerModel?: unknown;
     imageContext?: unknown;
+    ui_spec?: unknown;
   }>(result.data, "conversa");
   const reply = typeof output.reply === "string" ? output.reply.trim() : "";
 
@@ -275,6 +298,7 @@ export async function apiChat(
     image && typeof output.imageContext === "string" && output.imageContext.trim()
       ? output.imageContext.trim().slice(0, 2000)
       : undefined;
+  const uiSpec = uiSpecOf(output.ui_spec);
 
   return {
     reply: reply || "Aqui está a imagem que preparei com base na nossa conversa.",
@@ -282,6 +306,7 @@ export async function apiChat(
     ...(image ? { image } : {}),
     ...(providerModel ? { providerModel } : {}),
     ...(imageContext ? { imageContext } : {}),
+    ...(uiSpec ? { uiSpec } : {}),
   };
 }
 
