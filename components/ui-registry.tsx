@@ -78,6 +78,7 @@ const REGISTRY: Record<RenderSpec["component"], React.ComponentType<any>> = {
   ),
 };
 
+
 export type { RenderSpec };
 export const uiRegistry = REGISTRY;
 export default REGISTRY;
