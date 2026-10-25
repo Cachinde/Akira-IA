@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <defs>
+    <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#FF3D00;stop-opacity:1" />
+      <stop offset="50%" style="stop-color:#D50000;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#BF360C;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="grad2" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#FF6F00;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#FFD600;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  <!-- Fundo circular escuro -->
+  <circle cx="128" cy="128" r="120" fill="#0A0A0C"/>
+  <!-- Anel externo gradiente -->
+  <circle cx="128" cy="128" r="116" fill="none" stroke="url(#grad)" stroke-width="6"/>
+  <!-- Anel interno dourado -->
+  <circle cx="128" cy="128" r="100" fill="none" stroke="url(#grad2)" stroke-width="2" opacity="0.6"/>
+  
+  <!-- Cérebro estilizado - hemisférios -->
+  <g fill="url(#grad)">
+    <!-- Hemisfério esquerdo -->
+    <path d="M128 48 
+      C100 48 78 62 66 84 
+      C58 98 56 118 60 134 
+      C64 148 74 158 90 162 
+      C98 164 110 158 118 148 
+      C122 142 126 134 128 126 
+      C126 134 122 142 118 148 
+      C110 158 98 164 90 162 
+      C74 158 64 148 60 134 
+      C56 118 58 98 66 84 
+      C78 62 100 48 128 48 Z" 
+      opacity="0.9"/>
+    <!-- Hemisfério direito -->
+    <path d="M128 48 
+      C156 48 178 62 190 84 
+      C198 98 200 118 196 134 
+      C192 148 182 158 166 162 
+      C158 164 146 158 138 148 
+      C134 142 130 134 128 126 
+      C130 134 134 142 138 148 
+      C146 158 158 164 166 162 
+      C182 158 192 148 196 134 
+      C200 118 198 98 190 84 
+      C178 62 156 48 128 48 Z" 
+      opacity="0.7"/>
+  </g>
+  
+  <!-- Linha central / conexão neural -->
+  <path d="M128 60 Q128 100 128 140" stroke="url(#grad2)" stroke-width="3" fill="none" opacity="0.8" stroke-linecap="round"/>
+  
+  <!-- Pontos neurais / sinapses -->
+  <g fill="url(#grad2)">
+    <circle cx="96" cy="72" r="4" opacity="0.9"/>
+    <circle cx="160" cy="72" r="4" opacity="0.9"/>
+    <circle cx="84" cy="112" r="3" opacity="0.7"/>
+    <circle cx="172" cy="112" r="3" opacity="0.7"/>
+    <circle cx="100" cy="148" r="3" opacity="0.6"/>
+    <circle cx="156" cy="148" r="3" opacity="0.6"/>
+  </g>
+  
+  <!-- Texto AKIRA (opcional, pequeno) -->
+  <text x="128" y="210" font-family="system-ui, sans-serif" font-weight="700" font-size="22" fill="url(#grad2)" text-anchor="middle" letter-spacing="3">AKIRA</text>
+</svg>
