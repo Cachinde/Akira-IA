@@ -43,9 +43,9 @@ export const metadata: Metadata = {
   creator: "SoftEdge Corporation",
   publisher: "SoftEdge Corporation",
   alternates: { canonical: "/" },
-  verification: process.env.GOOGLE_SITE_VERIFICATION
-    ? { google: process.env.GOOGLE_SITE_VERIFICATION }
-    : undefined,
+  verification: {
+    google: process.env.GOOGLE_SITE_VERIFICATION || "qTOzIc73G2LzIVLTZV4IX1tMx2-rICf5tBJtEogkwDg",
+  },
   icons: {
     icon: [
       { url: "/favicon.ico", type: "image/x-icon" },
