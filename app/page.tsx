@@ -62,7 +62,7 @@ type UiSpecSegmentProps = { segment: MessageSegment };
 // Cards generativos ("conforme o GPT gera", sem markdown):
 // aceita blocos :::ui\n{...}\n::: e ```ui\n{...}\n``` no texto do assistant.
 // AKIRA emite specs para Metric/Steps/ResultCard/Card; o resto fica markdown.
-const UI_SPEC_PATTERN = /:::ui\s*\n([\s\S]*?)\n:::|```(?:ui|ui-spec)\s*\n([\s\S]*?)```/g;
+export const UI_SPEC_PATTERN = /:::ui\s*\n([\s\S]*?)\n:::|```(?:ui|ui-spec)\s*\n([\s\S]*?)```/g;
 
 export function parseUiSpecBlocks(content: string): MessageSegment[] {
   const segments: MessageSegment[] = [];
