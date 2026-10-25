@@ -227,7 +227,7 @@ button:disabled { cursor: not-allowed; }
 .markdown-content pre { max-width: 100%; overflow-x: auto; margin: 10px 0; padding: 13px; border: 1px solid var(--line); border-radius: 12px; background: #1b1b1b; font-size: 12.5px; line-height: 1.65; }
 .markdown-content code { padding: 2px 5px; border-radius: 5px; background: rgba(255,255,255,.09); font-family: ui-monospace, "Cascadia Mono", "SF Mono", Consolas, "Courier New", monospace; font-size: .9em; }
 .markdown-content pre code { padding: 0; background: transparent; }
-.markdown-content table { display: block; max-width: 100%; overflow-x: auto; border-collapse: collapse; }
+.markdown-content table:not(.ui-table) { display: block; max-width: 100%; overflow-x: auto; border-collapse: collapse; }
 .markdown-content th, .markdown-content td { padding: 7px 10px; border: 1px solid var(--line-strong); text-align: left; }
 .markdown-content th { background: rgba(255,255,255,.05); }
 .msg.user .bubble { padding: 10px 16px; border-radius: 20px; background: var(--surface-2); color: var(--text); }
