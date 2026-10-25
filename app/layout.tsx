@@ -30,6 +30,11 @@ export const metadata: Metadata = {
   description: "A IA angolana que conversa em português: explora ideias, analisa documentos e imagens e cria imagens com inteligência artificial. Da SoftEdge Corporation.",
   keywords: [
     "AKIRA",
+    "akira IA",
+    "IA",
+    "chatbot",
+    "assistant",
+    "assistente virtual de IA",
     "assistente de inteligência artificial",
     "IA angolana",
     "inteligência artificial em Angola",
