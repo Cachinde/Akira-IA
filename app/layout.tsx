@@ -18,7 +18,7 @@ const manrope = Manrope({
 });
 
 const siteUrl = getPublicSiteUrl();
-  const shareImageUrl = new URL("/akira-logo.svg", siteUrl).toString();
+  const shareImageUrl = new URL("/akira-og.png", siteUrl).toString();
 
   export const metadata: Metadata = {
     metadataBase: new URL(siteUrl),
