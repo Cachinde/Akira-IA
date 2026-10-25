@@ -55,7 +55,6 @@ const siteUrl = getPublicSiteUrl();
     },
     icons: {
       icon: [
-        { url: "/icon-akira.svg", type: "image/svg+xml" },
         { url: "/favicon.ico", type: "image/x-icon" },
         { url: "/icon-512.png", sizes: "512x512", type: "image/png" },
       ],
