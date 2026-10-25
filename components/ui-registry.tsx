@@ -17,7 +17,7 @@ type RenderSpec =
 const REGISTRY: Record<RenderSpec["component"], React.ComponentType<any>> = {
   Card: ({ props }: any) => (
     <div className="ui-card">
-      <div className="ui-card-content" dangerouslySetInnerHTML={{ __html: String(props?.content ?? "") }} />
+      <div className="ui-card-content" dangerouslySetInnerHTML={{ __html: renderMarkdownContent(String(props?.content ?? "")) }} />
     </div>
   ),
   Metric: ({ label, value, trend }: MetricProps) => (
