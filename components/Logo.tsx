@@ -9,7 +9,6 @@ export default function Logo({ size = 72 }: { size?: number }) {
         width={size}
         height={size}
         style={{ width: "100%", height: "auto", filter: "drop-shadow(0 0 6px rgba(0,0,0,0.4))" }}
-        priority={size > 60}
       />
     </span>
   );
