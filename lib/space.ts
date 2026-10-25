@@ -47,6 +47,31 @@ function uiSpecOf(value: unknown): ChatResult["uiSpec"] {
   };
 }
 
+// UI Generativa (FIX 2026-10-21): a Space devolve `ui_spec_segments`
+// (prosa + cards intercalados, do app.py) ou um `ui_spec` único.
+// Transforma-os em blocos :::ui/texto à la true dentro do `reply` —
+// o bot_ui parseia os blocos e renderiza cards sem duplicação.
+function uiSegmentsToBlocks(value: unknown): string | null {
+  if (!Array.isArray(value)) return null;
+  const parts: string[] = [];
+  let hasSpec = false;
+  for (const item of value) {
+    if (!item || typeof item !== "object") continue;
+    const record = item as Record<string, unknown>;
+    if (typeof record.text === "string" && record.text.trim()) {
+      parts.push(record.text.trim());
+      continue;
+    }
+    const spec = typeof record.spec === "string" ? undefined : uiSpecOf(record.spec);
+    if (spec) {
+      parts.push(`:::ui\n${JSON.stringify(spec)}\n:::`);
+      hasSpec = true;
+    }
+  }
+  if (!hasSpec) return null;
+  return parts.join("\n\n");
+}
+
 export type WebSearchResult = { query: string; summary: string; links: string[] };
 
 export class ContentModerationError extends Error {
@@ -277,8 +302,9 @@ export async function apiChat(
     providerModel?: unknown;
     imageContext?: unknown;
     ui_spec?: unknown;
+    ui_spec_segments?: unknown;
   }>(result.data, "conversa");
-  const reply = typeof output.reply === "string" ? output.reply.trim() : "";
+  let reply = typeof output.reply === "string" ? output.reply.trim() : "";
 
   if (output.provider === "error") {
     throw new Error(reply || "A AKIRA não conseguiu processar o contexto da conversa.");
@@ -298,7 +324,21 @@ export async function apiChat(
     image && typeof output.imageContext === "string" && output.imageContext.trim()
       ? output.imageContext.trim().slice(0, 2000)
       : undefined;
-  const uiSpec = uiSpecOf(output.ui_spec);
+  // Cards via blocos :::ui (preferido: segments preservam a prosa).
+  // Fallback: spec única não-Table (Steps/KeyValue/Metric) → 1 bloco.
+  // Spec Table única segue pelo campo uiSpec (replace cirúrgico e renderMessage antigo).
+  let uiSpec: ChatResult["uiSpec"];
+  const segments = output.ui_spec_segments ?? null;
+  const segBlocks = segments && Array.isArray(segments) ? uiSegmentsToBlocks(segments) : null;
+  if (segBlocks) {
+    reply = segBlocks;
+  } else {
+    uiSpec = uiSpecOf(output.ui_spec);
+    if (uiSpec && uiSpec.component !== "Table") {
+      reply = `${reply}\n\n:::ui\n${JSON.stringify(uiSpec)}\n:::`;
+      uiSpec = undefined;
+    }
+  }
 
   return {
     reply: reply || "Aqui está a imagem que preparei com base na nossa conversa.",

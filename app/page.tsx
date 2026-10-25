@@ -2056,7 +2056,7 @@ export default function Page() {
                   {greetingPhase === "question" && <span className="typing-caret" />}
                 </span>
               </h1>
-              <p className="hero-caption">{authSnapshot?.displayName ? "O que vamos explorar hoje?" : "Pergunta, imagina, cria. Vamos descobrir juntos."}</p>
+              <p className="hero-caption">{authSnapshot?.displayName ? "A IA angolana que responde em português. O que vamos explorar hoje?" : "Pergunta, imagina, cria. A IA angolana feita pela SoftEdge — vamos descobrir juntos."}</p>
               <div className="suggestion-grid">
                 {suggestions.map(({ icon: Icon, label, text }) => (
                   <button className="suggestion-card" key={label} onClick={() => chooseSuggestion(text)}>

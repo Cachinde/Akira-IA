@@ -27,11 +27,14 @@ export const metadata: Metadata = {
     template: "%s | AKIRA",
   },
   applicationName: "AKIRA",
-  description: "Conversa com a AKIRA em português, explora ideias, analisa documentos e imagens e cria imagens com inteligência artificial.",
+  description: "A IA angolana que conversa em português: explora ideias, analisa documentos e imagens e cria imagens com inteligência artificial. Da SoftEdge Corporation.",
   keywords: [
     "AKIRA",
     "assistente de inteligência artificial",
-    "chatbot de IA em português",
+    "IA angolana",
+    "inteligência artificial em Angola",
+    "IA em português",
+    "AKIRA SoftEdge",
     "criar imagens com IA",
     "analisar documentos com IA",
     "SoftEdge Corporation",
@@ -40,6 +43,13 @@ export const metadata: Metadata = {
   creator: "SoftEdge Corporation",
   publisher: "SoftEdge Corporation",
   alternates: { canonical: "/" },
+  icons: {
+    icon: [
+      { url: "/favicon.ico", type: "image/x-icon" },
+      { url: "/icon-512.png", sizes: "512x512", type: "image/png" },
+    ],
+    apple: "/apple-icon.png",
+  },
   robots: {
     index: true,
     follow: true,
@@ -87,12 +97,14 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   const structuredData = {
     "@context": "https://schema.org",
     "@graph": [
-      {
-        "@type": "Organization",
-        "@id": `${siteUrl}/#organization`,
-        name: "SoftEdge Corporation",
-        url: "https://softedge-corporation.up.railway.app/",
-      },
+        {
+          "@type": "Organization",
+          "@id": `${siteUrl}/#organization`,
+          name: "SoftEdge Corporation",
+          url: "https://softedge-corporation.up.railway.app/",
+          slogan: "A IA angolana para as tuas ideias",
+          areaServed: { "@type": "Country", name: "Angola" },
+        },
       {
         "@type": "WebSite",
         "@id": `${siteUrl}/#website`,
@@ -111,7 +123,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         isAccessibleForFree: true,
         inLanguage: "pt-PT",
         url: siteUrl,
-        description: "Assistente de IA em português para conversar, explorar ideias, analisar documentos e imagens e criar imagens.",
+          description: "A IA angolana em português para conversar, explorar ideias, analisar documentos e imagens e criar imagens.",
         publisher: { "@id": `${siteUrl}/#organization` },
       },
     ],
