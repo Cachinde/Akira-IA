@@ -1,4 +1,18 @@
 import React from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+
+// Card/Os cartões dos cards aceitam Markdown simples (bold, listas, links) —
+// estilo ChatGPT: conteúdo do card NUNCA mostra sintaxe crua (ex: **texto**).
+function MiniMarkdown({ text }: { text: unknown }) {
+  const value = typeof text === "string" ? text : "";
+  if (!value.trim()) return null;
+  return (
+    <div className="markdown-content">
+      <ReactMarkdown remarkPlugins={[remarkGfm]}>{value}</ReactMarkdown>
+    </div>
+  );
+}
 
 type MetricProps = { label: string; value: string; trend?: string };
 type Step = { title: string; detail?: string };
@@ -17,7 +31,10 @@ type RenderSpec =
 const REGISTRY: Record<RenderSpec["component"], React.ComponentType<any>> = {
   Card: ({ props }: any) => (
     <div className="ui-card">
-      <div className="ui-card-content" dangerouslySetInnerHTML={{ __html: renderMarkdownContent(String(props?.content ?? "")) }} />
+      <div className="ui-card-content">
+        <MiniMarkdown text={props?.content} />
+        {props?.title && <p className="ui-card-title">{String(props.title)}</p>}
+      </div>
     </div>
   ),
   Metric: ({ label, value, trend }: MetricProps) => (
@@ -32,9 +49,9 @@ const REGISTRY: Record<RenderSpec["component"], React.ComponentType<any>> = {
       {items.map((step, index) => (
         <li key={index} className="ui-step">
           <span className="ui-step-num">{index + 1}</span>
-          <div>
+          <div className="ui-step-body">
             <p className="ui-step-title">{step.title}</p>
-            {step.detail && <p className="ui-step-detail">{step.detail}</p>}
+            {step.detail && <div className="ui-step-detail"><MiniMarkdown text={step.detail} /></div>}
           </div>
         </li>
       ))}

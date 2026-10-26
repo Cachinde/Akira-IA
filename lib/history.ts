@@ -9,6 +9,7 @@ export type Msg = {
   attachmentName?: string;
   feedback?: "positive" | "negative";
   uiSpec?: { component: string; props: Record<string, unknown> };
+  uiSpecSegments?: Array<Record<string, unknown>>;
   createdAt: string;
 };
 
@@ -106,6 +107,13 @@ function normalizeChat(chat: Chat, index: number): Chat {
       candidate.uiSpec.props &&
       typeof candidate.uiSpec.props === "object"
         ? { uiSpec: candidate.uiSpec }
+        : {}),
+      ...(Array.isArray(candidate.uiSpecSegments) &&
+      candidate.uiSpecSegments.length > 0 &&
+      candidate.uiSpecSegments.every(
+        (item) => !!item && typeof item === "object" && !Array.isArray(item),
+      )
+        ? { uiSpecSegments: candidate.uiSpecSegments }
         : {}),
     };
   });

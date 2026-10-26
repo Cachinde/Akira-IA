@@ -42,7 +42,9 @@ import {
 } from "../lib/chat-limits";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { uiRegistry, type RenderSpec } from "@/components/ui-registry";
+import type { RenderSpec } from "@/components/ui-registry";
+import { AkiraMessageRenderer } from "@/components/AkiraMessageRenderer";
+import { parseLegacyUiSpec, parseUiSpecSegmentsPayload } from "@/lib/ui-spec";
 
 type AuthSnapshot = {
   historyScope: string;
@@ -53,90 +55,23 @@ type AuthSnapshot = {
   guestMessageLimit: number;
 };
 
-type MessageSegment =
-  | { kind: "text"; text: string }
-  | { kind: "spec"; spec: RenderSpec };
-
-type UiSpecSegmentProps = { segment: MessageSegment };
-
-// Cards generativos ("conforme o GPT gera", sem markdown):
-// aceita blocos :::ui\n{...}\n::: e ```ui\n{...}\n``` no texto do assistant.
-// AKIRA emite specs para Metric/Steps/ResultCard/Card; o resto fica markdown.
-export const UI_SPEC_PATTERN = /:::ui\s*\n([\s\S]*?)\n:::|```(?:ui|ui-spec)\s*\n([\s\S]*?)```/g;
-
-export function parseUiSpecBlocks(content: string): MessageSegment[] {
-  const segments: MessageSegment[] = [];
-  let cursor = 0;
-  let hadSpec = false;
-  UI_SPEC_PATTERN.lastIndex = 0;
-  let match = UI_SPEC_PATTERN.exec(content);
-  while (match) {
-    const before = content.slice(cursor, match.index).trim();
-    if (before) segments.push({ kind: "text", text: before });
-    const raw = (match[1] ?? match[2] ?? "").trim();
-    let spec: RenderSpec | null = null;
-    try {
-      const parsed = JSON.parse(raw) as unknown;
-      if (
-        parsed &&
-        typeof parsed === "object" &&
-        "component" in parsed &&
-        typeof (parsed as RenderSpec).component === "string" &&
-        (parsed as RenderSpec).component in uiRegistry
-      ) {
-        spec = parsed as RenderSpec;
-      }
-    } catch {
-      spec = null;
-    }
-    if (spec) {
-      segments.push({ kind: "spec", spec });
-      hadSpec = true;
-    } else if (match[0]) {
-      segments.push({ kind: "text", text: match[0] });
-    }
-    cursor = UI_SPEC_PATTERN.lastIndex;
-    match = UI_SPEC_PATTERN.exec(content);
-  }
-  if (!hadSpec) return [{ kind: "text", text: content }];
-  const tail = content.slice(cursor).trim();
-  if (tail) segments.push({ kind: "text", text: tail });
-  return segments;
-}
-
-function UiSpecSegment({ segment }: UiSpecSegmentProps) {
-  if (segment.kind === "text") {
-    return <ReactMarkdown remarkPlugins={[remarkGfm]}>{segment.text}</ReactMarkdown>;
-  }
-  const Component = uiRegistry[segment.spec.component as keyof typeof uiRegistry];
-  if (!Component) {
-    return <ReactMarkdown remarkPlugins={[remarkGfm]}>{`:::ui\n${JSON.stringify(segment.spec)}\n:::`}</ReactMarkdown>;
-  }
-  if (segment.spec.component === "Card") {
-    return <Component props={segment.spec.props} />;
-  }
-  return <Component {...(segment.spec.props as Record<string, unknown>)} />;
-}
-
+// Cards generativos (canal estruturado do backend + blocos :::ui no texto).
+// Todo o parsing vive em lib/ui-spec.ts; o motor de render é AkiraMessageRenderer.
 function AssistantMessageContent({
   content,
   uiSpec,
+  uiSpecSegments,
 }: {
   content: string;
   uiSpec?: unknown;
+  uiSpecSegments?: unknown;
 }) {
-  const spec = parseUiSpec(uiSpec);
-  const displayContent = spec ? replaceMarkdownTableWithUiSpec(content, spec) : content;
-  const segments = parseUiSpecBlocks(displayContent);
-  if (!segments.some((segment) => segment.kind === "spec")) {
-    return <ReactMarkdown remarkPlugins={[remarkGfm]}>{displayContent}</ReactMarkdown>;
-  }
   return (
-    <div className="ui-specs">
-      {segments.map((segment, segmentIndex) => (
-        <UiSpecSegment key={segmentIndex} segment={segment} />
-      ))}
-    </div>
+    <AkiraMessageRenderer
+      content={content}
+      uiSpec={uiSpec}
+      uiSpecSegments={uiSpecSegments}
+    />
   );
 }
 
@@ -211,69 +146,6 @@ function responseError(data: unknown, fallback: string) {
     return data.error;
   }
   return fallback;
-}
-
-function isStringArray(value: unknown): value is string[] {
-  return Array.isArray(value) && value.every((item) => typeof item === "string");
-}
-
-function isStringMatrix(value: unknown): value is string[][] {
-  return Array.isArray(value) && value.every((row) => isStringArray(row));
-}
-
-function parseUiSpec(value: unknown): RenderSpec | null {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-  const record = value as Record<string, unknown>;
-  const candidate = record.uiSpec ?? record.ui_spec ?? value;
-  if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return null;
-  const spec = candidate as Record<string, unknown>;
-  if (spec.component !== "Table" || !spec.props || typeof spec.props !== "object") return null;
-  const props = spec.props as Record<string, unknown>;
-  if (!isStringArray(props.columns) || !isStringMatrix(props.rows)) {
-    return null;
-  }
-  return {
-    component: "Table",
-    props: { columns: props.columns, rows: props.rows },
-  };
-}
-
-function markdownTableCells(line: string): string[] | null {
-  const trimmed = line.trim();
-  if (!trimmed.includes("|")) return null;
-  const body = trimmed.replace(/^\|/, "").replace(/\|$/, "");
-  return body.split("|").map((cell) =>
-    cell.replace(/\*\*/g, "").replace(/`/g, "").trim().replace(/\s+/g, " "),
-  );
-}
-
-function replaceMarkdownTableWithUiSpec(content: string, spec: RenderSpec): string {
-  if (spec.component !== "Table") return content;
-  const lines = content.split(/\r?\n/);
-  const matches = (line: string, cells: string[]) => {
-    const parsed = markdownTableCells(line);
-    return parsed?.length === cells.length && parsed.every((cell, index) => cell === cells[index]);
-  };
-
-  for (let start = 0; start + spec.props.rows.length + 1 < lines.length; start += 1) {
-    if (!matches(lines[start], spec.props.columns)) continue;
-    const separator = markdownTableCells(lines[start + 1]);
-    if (
-      !separator ||
-      separator.length !== spec.props.columns.length ||
-      !separator.every((cell) => /^:?-{3,}:?$/.test(cell))
-    ) {
-      continue;
-    }
-    const rowsMatch = spec.props.rows.every((row, index) =>
-      matches(lines[start + index + 2], row),
-    );
-    if (!rowsMatch) continue;
-    const marker = `:::ui\n${JSON.stringify(spec)}\n:::`;
-    lines.splice(start, spec.props.rows.length + 2, marker);
-    return lines.join("\n");
-  }
-  return content;
 }
 
 async function readJson(response: Response) {
@@ -813,8 +685,17 @@ export default function Page() {
       "reply" in result &&
       typeof result.reply === "string"
     ) {
-      const uiSpec = parseUiSpec(result);
-      assistantMessage = makeMessage("assistant", result.reply, uiSpec ? { uiSpec } : {});
+      const resultRecord = result as Record<string, unknown>;
+      const uiSpec = parseLegacyUiSpec(result);
+      const uiSpecSegments = parseUiSpecSegmentsPayload(
+        resultRecord.ui_spec_segments ?? resultRecord.uiSpecSegments,
+      );
+      assistantMessage = makeMessage("assistant", result.reply, {
+        ...(uiSpec ? { uiSpec: uiSpec as { component: string; props: Record<string, unknown> } } : {}),
+        ...(uiSpecSegments
+          ? { uiSpecSegments: uiSpecSegments as unknown as Array<Record<string, unknown>> }
+          : {}),
+      });
     } else {
       assistantMessage = makeMessage("assistant", "A AKIRA devolveu um resultado inválido para este pedido.");
     }
@@ -2095,7 +1976,11 @@ export default function Page() {
                     )}
                     <div className={`bubble ${message.role === "assistant" ? "markdown-content" : ""}`}>
                       {message.role === "assistant" ? (
-                        <AssistantMessageContent content={message.content} uiSpec={message.uiSpec} />
+                        <AssistantMessageContent
+                          content={message.content}
+                          uiSpec={message.uiSpec}
+                          uiSpecSegments={message.uiSpecSegments}
+                        />
                       ) : (
                         message.content
                       )}

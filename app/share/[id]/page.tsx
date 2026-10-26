@@ -4,10 +4,8 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import Logo from "@/components/Logo";
 import { loadSharedMessage, type SharedMessage } from "@/lib/billing";
-import { parseUiSpecBlocks, UiSpecSegment, type MessageSegment } from "@/app/page";
+import { AkiraMessageRenderer } from "@/components/AkiraMessageRenderer";
 import { getPublicSiteUrl } from "@/lib/site-url";
-import { uiRegistry } from "@/components/ui-registry";
-import { parseUiSpecBlocks, type MessageSegment } from "@/app/page";
 
 type Props = { params: Promise<{ id: string }> };
 
@@ -55,9 +53,6 @@ export default async function SharedMessagePage({ params }: Props) {
   const { id } = await params;
   const content = await loadSharedMessage(id);
 
-  // Parse UI specs from answer
-  const answerSegments = parseUiSpecBlocks(content.answer ?? "");
-
   return (
     <main className="share-page">
       <header className="share-header">
@@ -84,19 +79,10 @@ export default async function SharedMessagePage({ params }: Props) {
                   loading="eager"
                   decoding="async"
                 />
-              }
-              {answerSegments.map((segment, idx) => {
-                if (segment.kind === "text") {
-                  return <div className="markdown-content" key={idx}><ReactMarkdown remarkPlugins={[remarkGfm]}>{segment.text}</ReactMarkdown></div>;
-                }
-                if (segment.kind === "spec" && segment.spec) {
-                  const Component = uiRegistry[segment.spec.component as keyof typeof uiRegistry];
-                  if (Component) {
-                    return <Component key={idx} {...(segment.spec.props as Record<string, unknown>)} />;
-                  }
-                }
-                return null;
-              })}
+              )}
+              {(content.answer || "").trim() ? (
+                <AkiraMessageRenderer content={content.answer || ""} className="share-answer-content" />
+              ) : null}
             </section>
           </>
         ) : (
