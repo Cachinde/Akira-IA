@@ -3,6 +3,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { uiRegistry, type RenderSpec } from "@/components/ui-registry";
 import {
+  hideUnfinishedUiBlocks,
   parseUiSpecBlocks,
   parseUiSpecSegmentsPayload,
   parseLegacyUiSpec,
@@ -52,10 +53,13 @@ type Props = {
   uiSpec?: unknown;
   uiSpecSegments?: unknown;
   className?: string;
+  isStreaming?: boolean;
 };
 
-export function AkiraMessageRenderer({ content, uiSpec, uiSpecSegments, className }: Props) {
-  const segs = segmentsFromPayload(uiSpecSegments) ?? segmentsFromContent(content, uiSpec);
+export function AkiraMessageRenderer({ content, uiSpec, uiSpecSegments, className, isStreaming }: Props) {
+  const segs =
+    segmentsFromPayload(uiSpecSegments) ??
+    segmentsFromContent(isStreaming ? hideUnfinishedUiBlocks(content) : content, uiSpec);
   if (!Array.isArray(segs)) return null;
   const hasSpec = segs.some((segment) => segment.kind === "spec");
   if (!hasSpec) {

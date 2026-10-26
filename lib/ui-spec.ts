@@ -242,3 +242,19 @@ export function parseUiSpecBlocks(content: string): Segment[] {
   if (tail) segments.push({ kind: "text", text: tail });
   return segments;
 }
+
+// Durante reprodução progressiva do texto (streaming), um bloco :::ui pode
+// estar pela metade. Corta do fim todo o bloco incompleto para não piscar
+// JSON cru; quando o texto terminar, o parser normal (com repair) decide.
+export function hideUnfinishedUiBlocks(content: string): string {
+  const openFence = content.lastIndexOf("```ui");
+  if (openFence !== -1 && !content.slice(openFence + 5).includes("```")) {
+    return content.slice(0, openFence).trimEnd();
+  }
+  const openSpec = content.lastIndexOf(":::ui");
+  if (openSpec !== -1) {
+    const after = content.slice(openSpec);
+    if (!after.includes(":::")) return content.slice(0, openSpec).trimEnd();
+  }
+  return content;
+}
