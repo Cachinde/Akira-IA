@@ -282,6 +282,7 @@ export async function apiChat(
   message: string,
   history: ChatMsg[],
   displayName: string,
+  sessionId?: string,
 ): Promise<ChatResult> {
   const client = await chatSpaceClient();
   const gradioHistory: GradioMessage[] = history.slice(-12).map(({ role, content }) => ({
@@ -293,7 +294,7 @@ export async function apiChat(
   const result = await client.predict("/chat", [
     message,
     gradioHistory,
-    JSON.stringify({ display_name: displayName }),
+    JSON.stringify({ display_name: displayName, session_id: sessionId || "" }),
   ]);
   const output = objectOutput<{
     reply?: unknown;

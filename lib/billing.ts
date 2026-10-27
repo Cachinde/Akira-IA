@@ -166,6 +166,7 @@ export type ChatJobRequest = {
   imageB64?: string;
   history: { role: "user" | "assistant"; content: string }[];
   displayName: string;
+  chatId?: string;
 };
 export type ChatJobResult = {
   reply: string;

@@ -44,7 +44,7 @@ async function startChatJob(jobId: string, userId: string): Promise<void> {
       const requestMessage = imageContext
         ? `${request.message}\n\n${imageContext}`
         : request.message;
-      const result = await apiChat(requestMessage, request.history, request.displayName);
+      const result = await apiChat(requestMessage, request.history, request.displayName, request.chatId);
       await updateChatJob(jobId, {
         status: "complete",
         result: { ...result, ...(imageContext ? { context: imageContext } : {}) },
@@ -167,6 +167,13 @@ export async function POST(req: NextRequest) {
       message: requestMessage,
       history,
       displayName,
+      // Sessão por conversa: o ID do chat (IndexedDB do cliente) identifica a
+      // sessão de memória na AKIRA — cada conversa tem o seu contexto isolado.
+      chatId:
+        typeof input.chatId === "string" &&
+        /^[A-Za-z0-9_-]{6,128}$/.test(input.chatId.trim())
+          ? input.chatId.trim()
+          : undefined,
       ...(imageB64 ? { imageB64 } : {}),
     };
     const created = await createChatJob(identity.userId, jobId, request);

@@ -1322,6 +1322,7 @@ export default function Page() {
       jobId,
       message: chatMessage,
       context: chatContext,
+      chatId: chatId,
       ...(!backgroundSend && attachment?.dataUrl ? { imageB64: attachment.dataUrl } : {}),
       history: previousHistory,
     };
