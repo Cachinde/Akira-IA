@@ -7,6 +7,7 @@ import {
   parseUiSpecBlocks,
   parseUiSpecSegmentsPayload,
   parseLegacyUiSpec,
+  repairEmphasis,
   replaceMarkdownTableWithUiSpec,
   type Segment,
   type UiSpecSegmentPayload,
@@ -29,7 +30,7 @@ function segmentsFromContent(content: string, uiSpec: unknown): Segment[] {
 function TextSegment({ text }: { text: string }) {
   return (
     <div className="markdown-content">
-      <ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown>
+      <ReactMarkdown remarkPlugins={[remarkGfm]}>{repairEmphasis(text)}</ReactMarkdown>
     </div>
   );
 }

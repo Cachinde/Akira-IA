@@ -1,11 +1,12 @@
 import React from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { repairEmphasis } from "@/lib/ui-spec";
 
 // Card/Os cartões dos cards aceitam Markdown simples (bold, listas, links) —
 // estilo ChatGPT: conteúdo do card NUNCA mostra sintaxe crua (ex: **texto**).
 function MiniMarkdown({ text }: { text: unknown }) {
-  const value = typeof text === "string" ? text : "";
+  const value = typeof text === "string" ? repairEmphasis(text) : "";
   if (!value.trim()) return null;
   return (
     <div className="markdown-content">
@@ -16,15 +17,21 @@ function MiniMarkdown({ text }: { text: unknown }) {
 
 // Inline: markdown SEM bloco de parágrafo (para títulos, labels, descrições
 // curtas). Resolve ***bold+itálico***, **bold** e `código` sem mostrar os asteriscos.
+// Se mesmo após a normalização sobrarem ** (par impossível de fechar), limpam-se
+// os marcadores na força — sempre melhor que mostrar "***texto***" cru.
 function MiniInline({ text }: { text: unknown }) {
-  const value = typeof text === "string" ? text.trim() : "";
-  if (!value) return null;
+  const raw = typeof text === "string" ? text.trim() : "";
+  if (!raw) return null;
+  const value = repairEmphasis(raw);
+  const renderable = /\*\*/.test(value)
+    ? value.replace(/\*\*/g, "").replace(/`/g, "")
+    : value;
   return (
     <ReactMarkdown
       remarkPlugins={[remarkGfm]}
       components={{ p: (props: any) => <>{props.children}</> }}
     >
-      {value}
+      {renderable}
     </ReactMarkdown>
   );
 }

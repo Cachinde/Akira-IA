@@ -258,3 +258,25 @@ export function hideUnfinishedUiBlocks(content: string): string {
   }
   return content;
 }
+
+// O modelo às vezes deixa o par de bold quebrado (ex: "**Kibabo\n**" — abriu
+// numa linha e fechou noutra) ou com espaços dentro ("** Título **"). Markdown
+// não fecha esses pares e os asteriscos ficam à mostra. Normaliza:
+//  - casa "**aberto\n**" em "**aberto**";
+//  - aparar espaços dentro de cada par;
+//  - nº ímpar de pares (desequilibrado) → remove todos os ** (render limpo).
+export function repairEmphasis(raw: string): string {
+  const text = raw.replace(
+    /(\*\*)((?:[^*]|\*(?!\*))*?)\n+\s*\*\*/g,
+    "$1$2**",
+  );
+  const tokens = text.split("**");
+  const starCount = tokens.length - 1;
+  if (starCount === 0) return text;
+  if (starCount % 2 !== 0) return text.replace(/\*\*/g, "");
+  return tokens
+    .map((segment, index) =>
+      index % 2 === 1 ? segment.replace(/^[ \t]+|[ \t]+$/g, "") : segment,
+    )
+    .join("**");
+}
