@@ -230,6 +230,15 @@ button:disabled { cursor: not-allowed; }
 .markdown-content table:not(.ui-table) { display: block; max-width: 100%; overflow-x: auto; border-collapse: collapse; }
 .markdown-content th, .markdown-content td { padding: 7px 10px; border: 1px solid var(--line-strong); text-align: left; }
 .markdown-content th { background: rgba(255,255,255,.05); }
+
+/* ── KaTeX (LaTeX matemático: $inline$ e $$bloco$$) ── */
+.katex { font-size: 1.02em; color: var(--text-strong); }
+.markdown-content .katex-display { display: flex; flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden; margin: 14px 0; padding: 6px 2px; justify-content: center; scrollbar-width: thin; scrollbar-color: rgba(255,255,255,.22) transparent; }
+.markdown-content .katex-display > .katex { margin: 0; }
+.markdown-content .katex-display::-webkit-scrollbar { height: 8px; }
+.markdown-content .katex-display::-webkit-scrollbar-thumb { border-radius: 999px; background: rgba(255,255,255,.16); }
+.ui-table .katex, .ui-steps .katex, .ui-card .katex { font-size: 1em; }
+.katex .mord .mord { font-variant: normal; }
 .msg.user .bubble { padding: 10px 16px; border-radius: 20px; background: var(--surface-2); color: var(--text); }
 .msg.assistant .bubble { padding: 2px 0; }
 .attached-image { display: block; max-width: min(100%,260px); max-height: 220px; margin-bottom: 9px; border: 1px solid var(--line); border-radius: 14px; object-fit: contain; }

@@ -1,7 +1,7 @@
 import React from "react";
 import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 import { uiRegistry, type RenderSpec } from "@/components/ui-registry";
+import { remarkPlugins, rehypePlugins } from "@/components/markdown-plugins";
 import {
   hideUnfinishedUiBlocks,
   parseUiSpecBlocks,
@@ -30,7 +30,7 @@ function segmentsFromContent(content: string, uiSpec: unknown): Segment[] {
 function TextSegment({ text }: { text: string }) {
   return (
     <div className="markdown-content">
-      <ReactMarkdown remarkPlugins={[remarkGfm]}>{repairEmphasis(text)}</ReactMarkdown>
+      <ReactMarkdown remarkPlugins={remarkPlugins} rehypePlugins={rehypePlugins}>{repairEmphasis(text)}</ReactMarkdown>
     </div>
   );
 }

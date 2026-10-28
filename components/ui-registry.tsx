@@ -1,7 +1,7 @@
 import React from "react";
 import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 import { repairEmphasis } from "@/lib/ui-spec";
+import { remarkPlugins, rehypePlugins } from "@/components/markdown-plugins";
 
 // Card/Os cartões dos cards aceitam Markdown simples (bold, listas, links) —
 // estilo ChatGPT: conteúdo do card NUNCA mostra sintaxe crua (ex: **texto**).
@@ -10,7 +10,7 @@ function MiniMarkdown({ text }: { text: unknown }) {
   if (!value.trim()) return null;
   return (
     <div className="markdown-content">
-      <ReactMarkdown remarkPlugins={[remarkGfm]}>{value}</ReactMarkdown>
+      <ReactMarkdown remarkPlugins={remarkPlugins} rehypePlugins={rehypePlugins}>{value}</ReactMarkdown>
     </div>
   );
 }
@@ -28,7 +28,8 @@ function MiniInline({ text }: { text: unknown }) {
     : value;
   return (
     <ReactMarkdown
-      remarkPlugins={[remarkGfm]}
+      remarkPlugins={remarkPlugins}
+      rehypePlugins={rehypePlugins}
       components={{ p: (props: any) => <>{props.children}</> }}
     >
       {renderable}
@@ -97,7 +98,7 @@ const REGISTRY: Record<RenderSpec["component"], React.ComponentType<any>> = {
     <div className="ui-table-wrap" role="region" aria-label="Tabela de resposta" tabIndex={0}>
       <table className="ui-table">
         <thead>
-          <tr>{columns.map((column, index) => <th key={index} scope="col">{stripInlineMarkup(String(column ?? ""))}</th>)}</tr>
+          <tr>{columns.map((column, index) => <th key={index} scope="col"><MiniInline text={String(column ?? "")} /></th>)}</tr>
         </thead>
         <tbody>
           {rows.map((row, rowIndex) => (

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { DM_Sans, Manrope } from "next/font/google";
+import "katex/dist/katex.min.css";
 import "./globals.css";
 import { getPublicSiteUrl } from "@/lib/site-url";
 
