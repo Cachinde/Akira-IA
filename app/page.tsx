@@ -1948,6 +1948,7 @@ export default function Page() {
                   </button>
                 ))}
               </div>
+              {!authSnapshot?.displayName && (
               <section
                 className="seo-intro"
                 aria-label="Sobre a AKIRA"
@@ -1997,6 +1998,7 @@ export default function Page() {
                   da SoftEdge Corporation.
                 </p>
               </section>
+              )}
             </div>
           )}
 
