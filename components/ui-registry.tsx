@@ -1,16 +1,46 @@
 import React from "react";
 import ReactMarkdown from "react-markdown";
 import { repairEmphasis } from "@/lib/ui-spec";
-import { remarkPlugins, rehypePlugins } from "@/components/markdown-plugins";
+import { normalizeMath, remarkPlugins, rehypePlugins } from "@/components/markdown-plugins";
+import { CopyChip } from "@/components/md-copy";
 
-// Card/Os cartões dos cards aceitam Markdown simples (bold, listas, links) —
+// Card/O cartões dos cards aceitam Markdown simples (bold, listas, links) —
 // estilo ChatGPT: conteúdo do card NUNCA mostra sintaxe crua (ex: **texto**).
-function MiniMarkdown({ text }: { text: unknown }) {
-  const value = typeof text === "string" ? repairEmphasis(text) : "";
+function MiniMarkdown({ text, copyable = false }: { text: unknown; copyable?: boolean }) {
+  const value = typeof text === "string" ? normalizeMath(repairEmphasis(text)) : "";
   if (!value.trim()) return null;
   return (
     <div className="markdown-content">
-      <ReactMarkdown remarkPlugins={remarkPlugins} rehypePlugins={rehypePlugins}>{value}</ReactMarkdown>
+      <ReactMarkdown
+        remarkPlugins={remarkPlugins}
+        rehypePlugins={rehypePlugins}
+        components={copyable ? { pre: (props: any) => <MiniCodeBlock {...props} /> } : undefined}
+      >
+        {value}
+      </ReactMarkdown>
+    </div>
+  );
+}
+
+// Bloco de código dentro de cards: mesmo cabeçalho + cópia.
+function MiniCodeBlock({ node }: { node?: any }) {
+  const codeElement = (node?.children || []).find((child: any) => child?.tagName === "code");
+  if (!codeElement) return <pre />;
+  const classes = Array.isArray(codeElement.properties?.className)
+    ? (codeElement.properties!.className as unknown[]).filter((c): c is string => typeof c === "string")
+    : [];
+  if (classes.includes("language-math")) return <pre />;
+  const language = classes.find((c) => c.startsWith("language-"))?.replace("language-", "") || "";
+  const code = String(codeElement.children?.map((child: any) => child?.value ?? "").join("") ?? "").replace(/\n+$/, "");
+  return (
+    <div className="md-codeblock">
+      <div className="md-codebar">
+        <span className="md-codelang">{language || "código"}</span>
+        <CopyChip getText={() => code} label="Copiar código" />
+      </div>
+      <pre>
+        <code className={language ? `language-${language}` : ""}>{code}</code>
+      </pre>
     </div>
   );
 }
@@ -22,7 +52,7 @@ function MiniMarkdown({ text }: { text: unknown }) {
 function MiniInline({ text }: { text: unknown }) {
   const raw = typeof text === "string" ? text.trim() : "";
   if (!raw) return null;
-  const value = repairEmphasis(raw);
+  const value = normalizeMath(repairEmphasis(raw));
   const renderable = /\*\*/.test(value)
     ? value.replace(/\*\*/g, "").replace(/`/g, "")
     : value;
@@ -94,24 +124,40 @@ const REGISTRY: Record<RenderSpec["component"], React.ComponentType<any>> = {
       {url && <a href={String(url)} target="_blank" rel="noopener noreferrer" className="ui-result-card-link">Ver detalhes</a>}
     </div>
   ),
-  Table: ({ columns, rows }: TableProps) => (
-    <div className="ui-table-wrap" role="region" aria-label="Tabela de resposta" tabIndex={0}>
-      <table className="ui-table">
-        <thead>
-          <tr>{columns.map((column, index) => <th key={index} scope="col"><MiniInline text={String(column ?? "")} /></th>)}</tr>
-        </thead>
-        <tbody>
-          {rows.map((row, rowIndex) => (
-            <tr key={rowIndex}>
-              {columns.map((_, columnIndex) => (
-                <td key={columnIndex}><MiniInline text={String(row[columnIndex] ?? "")} /></td>
+  Table: ({ columns, rows }: TableProps) => {
+    const cols = Array.isArray(columns) ? columns : [];
+    const dataRows = Array.isArray(rows) ? rows : [];
+    const asMarkdown = () => {
+      const width = Math.max(1, cols.length, ...dataRows.map((row) => (Array.isArray(row) ? row.length : 0)));
+      const line = (cells: string[]) => {
+        const padded = [...cells];
+        while (padded.length < width) padded.push("");
+        return `| ${padded.map((cell) => String(cell ?? "").replace(/\r?\n+/g, " ").trim()).join(" | ")} |`;
+      };
+      return [line(cols), `| ${Array(width).fill("---").join(" | ")} |`, ...dataRows.map((row) => line(Array.isArray(row) ? row : []))].join("\n");
+    };
+    return (
+      <div className="md-tablewrap ui-tablewrap-spec">
+        <div className="ui-table-wrap" role="region" aria-label="Tabela de resposta" tabIndex={0}>
+          <table className="ui-table">
+            <thead>
+              <tr>{cols.map((column, index) => <th key={index} scope="col"><MiniInline text={String(column ?? "")} /></th>)}</tr>
+            </thead>
+            <tbody>
+              {dataRows.map((row, rowIndex) => (
+                <tr key={rowIndex}>
+                  {cols.map((_, columnIndex) => (
+                    <td key={columnIndex}><MiniInline text={String(row[columnIndex] ?? "")} /></td>
+                  ))}
+                </tr>
               ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  ),
+            </tbody>
+          </table>
+        </div>
+        <CopyChip className="md-copybtn-table" getText={asMarkdown} label="Copiar tabela" />
+      </div>
+    );
+  },
   KeyValue: ({ items = [] }: { items: KeyValueItem[] }) => (
     <dl className="ui-key-value">
       {items.map((item, index) => (

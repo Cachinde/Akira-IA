@@ -259,6 +259,19 @@ export function hideUnfinishedUiBlocks(content: string): string {
   return content;
 }
 
+// Para copiar a resposta inteira: remove os blocos :::ui / ```ui``` (o texto
+// dos cards já está na prosa) para o copiar sair limpo e legível.
+export function stripUiSpecBlocks(content: string): string {
+  // sem especs → devolve o texto original
+  UI_SPEC_PATTERN.lastIndex = 0;
+  if (!UI_SPEC_PATTERN.test(content)) return content;
+  UI_SPEC_PATTERN.lastIndex = 0;
+  return content
+    .replace(UI_SPEC_PATTERN, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 // O modelo às vezes deixa o par de bold quebrado (ex: "**Kibabo\n**" — abriu
 // numa linha e fechou noutra) ou com espaços dentro ("** Título **"). Markdown
 // não fecha esses pares e os asteriscos ficam à mostra. Normaliza:

@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import ReactMarkdown from "react-markdown";
-import { remarkPlugins, rehypePlugins } from "@/components/markdown-plugins";
+import { normalizeMath, remarkPlugins, rehypePlugins } from "@/components/markdown-plugins";
+import { mdCopyComponents } from "@/components/md-copy";
 import Logo from "@/components/Logo";
 import { loadSharedMessage, type SharedMessage } from "@/lib/billing";
 import { AkiraMessageRenderer } from "@/components/AkiraMessageRenderer";
@@ -66,7 +67,7 @@ export default async function SharedMessagePage({ params }: Props) {
             {content.question && (
               <section className="share-question">
                 <div className="share-section-label">MENSAGEM ORIGINAL</div>
-                <div className="markdown-content"><ReactMarkdown remarkPlugins={remarkPlugins} rehypePlugins={rehypePlugins}>{content.question}</ReactMarkdown></div>
+                <div className="markdown-content"><ReactMarkdown remarkPlugins={remarkPlugins} rehypePlugins={rehypePlugins} components={mdCopyComponents}>{normalizeMath(content.question)}</ReactMarkdown></div>
               </section>
             )}
             <section className="share-answer">

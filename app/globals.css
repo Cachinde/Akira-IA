@@ -239,6 +239,45 @@ button:disabled { cursor: not-allowed; }
 .markdown-content .katex-display::-webkit-scrollbar-thumb { border-radius: 999px; background: rgba(255,255,255,.16); }
 .ui-table .katex, .ui-steps .katex, .ui-card .katex { font-size: 1em; }
 .katex .mord .mord { font-variant: normal; }
+
+/* ── Copiar à la ChatGPT (código, tabelas, blocos de texto) ── */
+.md-copybtn {
+  display: inline-flex;
+  width: 26px;
+  height: 24px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: #a9a9a9;
+  cursor: pointer;
+  transition: background .15s ease, color .15s ease, opacity .18s ease;
+}
+.md-copybtn:hover { background: rgba(255,255,255,.12); color: var(--text-strong); }
+.md-copybtn.done { color: var(--mint); }
+
+.md-codeblock { max-width: 100%; margin: 10px 0; border: 1px solid var(--line); border-radius: 12px; background: #1b1b1b; overflow: hidden; }
+.md-codebar { display: flex; min-height: 32px; align-items: center; justify-content: space-between; gap: 10px; padding: 3px 8px 3px 13px; border-bottom: 1px solid var(--line); background: rgba(255,255,255,.035); }
+.md-codelang { color: var(--faint); font-size: 10px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; }
+.markdown-content .md-codeblock pre { margin: 0; border: 0; border-radius: 0; background: transparent; overflow-x: auto; }
+
+.md-tablewrap { position: relative; max-width: 100%; margin: 10px 0; }
+.md-copybtn-table { position: absolute; top: 3px; right: 3px; z-index: 2; height: 26px; width: 28px; border: 1px solid var(--line); background: rgba(19,19,19,.92); opacity: 0; }
+.md-tablewrap:hover .md-copybtn-table, .md-copybtn-table:focus-visible, .md-copybtn-table.done { opacity: 1; }
+.md-tablewrap.ui-tablewrap-spec > .ui-table-wrap { margin: 0; }
+
+.md-inlinecode { position: relative; }
+.md-inlinecode .md-copybtn { position: absolute; top: -21px; right: -3px; width: 22px; height: 18px; opacity: 0; }
+.md-inlinecode:hover .md-copybtn, .md-inlinecode .md-copybtn:focus-visible { opacity: 1; }
+
+.md-textblock { position: relative; }
+.md-textblock > .md-copybtn { position: absolute; top: 1px; right: 0; opacity: 0; }
+.md-textblock:hover > .md-copybtn, .md-textblock > .md-copybtn:focus-visible { opacity: 1; }
+.markdown-content > .md-textblock:first-child > :first-child { margin-top: 0; }
+.markdown-content > .md-textblock:last-child > :last-child { margin-bottom: 0; }
 .msg.user .bubble { padding: 10px 16px; border-radius: 20px; background: var(--surface-2); color: var(--text); }
 .msg.assistant .bubble { padding: 2px 0; }
 .attached-image { display: block; max-width: min(100%,260px); max-height: 220px; margin-bottom: 9px; border: 1px solid var(--line); border-radius: 14px; object-fit: contain; }

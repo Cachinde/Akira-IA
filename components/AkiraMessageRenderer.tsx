@@ -1,7 +1,8 @@
 import React from "react";
 import ReactMarkdown from "react-markdown";
 import { uiRegistry, type RenderSpec } from "@/components/ui-registry";
-import { remarkPlugins, rehypePlugins } from "@/components/markdown-plugins";
+import { normalizeMath, remarkPlugins, rehypePlugins } from "@/components/markdown-plugins";
+import { mdCopyComponents } from "@/components/md-copy";
 import {
   hideUnfinishedUiBlocks,
   parseUiSpecBlocks,
@@ -30,7 +31,13 @@ function segmentsFromContent(content: string, uiSpec: unknown): Segment[] {
 function TextSegment({ text }: { text: string }) {
   return (
     <div className="markdown-content">
-      <ReactMarkdown remarkPlugins={remarkPlugins} rehypePlugins={rehypePlugins}>{repairEmphasis(text)}</ReactMarkdown>
+      <ReactMarkdown
+        remarkPlugins={remarkPlugins}
+        rehypePlugins={rehypePlugins}
+        components={mdCopyComponents}
+      >
+        {normalizeMath(repairEmphasis(text))}
+      </ReactMarkdown>
     </div>
   );
 }

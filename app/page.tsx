@@ -44,7 +44,9 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { RenderSpec } from "@/components/ui-registry";
 import { AkiraMessageRenderer } from "@/components/AkiraMessageRenderer";
-import { parseLegacyUiSpec, parseUiSpecSegmentsPayload } from "@/lib/ui-spec";
+import { normalizeMath } from "@/components/markdown-plugins";
+import { copyPlainText } from "@/components/md-copy";
+import { parseLegacyUiSpec, parseUiSpecSegmentsPayload, stripUiSpecBlocks } from "@/lib/ui-spec";
 
 type AuthSnapshot = {
   historyScope: string;
@@ -1655,7 +1657,12 @@ export default function Page() {
 
   async function copyMessage(message: Msg) {
     try {
-      await navigator.clipboard.writeText(message.content);
+      const friendly =
+        message.role === "assistant"
+          ? normalizeMath(stripUiSpecBlocks(message.content))
+          : message.content;
+      const copied = await copyPlainText(friendly);
+      if (!copied) throw new Error("clipboard");
       setCopiedId(message.id);
       setStatus("Mensagem copiada.");
       setStatusKind("");
@@ -1747,7 +1754,8 @@ export default function Page() {
       if (!result || typeof result !== "object" || !("url" in result) || typeof result.url !== "string") {
         throw new Error("Não foi possível criar o link da resposta.");
       }
-      await navigator.clipboard.writeText(result.url);
+      const ok = await copyPlainText(result.url);
+      if (!ok) throw new Error("clipboard");
       setStatus("Link de partilha copiado.");
       setStatusKind("");
     } catch (error) {
