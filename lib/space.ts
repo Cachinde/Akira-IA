@@ -4,6 +4,37 @@ const CHAT_SPACE_ID = process.env.AKIRA_CHAT_SPACE_ID || "akra35567/AKIRA-SOFTED
 const IMAGE_SPACE_ID = process.env.HF_SPACE_ID || CHAT_SPACE_ID;
 const HF_TOKEN = process.env.HF_TOKEN?.trim();
 
+// FIX "processing forever" (2026-10-28): em cadeias longas (descrição de
+// anexo + resposta + imagem), a ligação gradio (SSE) podia morrer em silêncio
+// e o predict nunca resolvia — o job ficava eternamente "processing" com o
+// spinner ativo. Agora cada predict tem um teto: ao expirar, rejeita com
+// mensagem clara e o job é marcado como falhado (retry possível).
+const PREDICT_TIMEOUT_MS = Number(process.env.AKIRA_PREDICT_TIMEOUT_MS ?? "") || 0;
+const CHAT_PREDICT_TIMEOUT_MS = PREDICT_TIMEOUT_MS || 285_000;
+const IMAGE_PREDICT_TIMEOUT_MS = PREDICT_TIMEOUT_MS || 420_000;
+
+async function withPredictTimeout<T>(promise: Promise<T>, label: string, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () =>
+            reject(
+              new Error(
+                `A AKIRA demorou demasiado (${label}). O servidor pode estar cheio — tenta de novo dentro de instantes.`,
+              ),
+            ),
+          ms,
+        );
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 export type ChatMsg = { role: "user" | "assistant"; content: string };
 export type ChatResult = {
   reply: string;
@@ -291,11 +322,15 @@ export async function apiChat(
     metadata: null,
     options: null,
   }));
-  const result = await client.predict("/chat", [
-    message,
-    gradioHistory,
-    JSON.stringify({ display_name: displayName, session_id: sessionId || "" }),
-  ]);
+  const result = await withPredictTimeout(
+    client.predict("/chat", [
+      message,
+      gradioHistory,
+      JSON.stringify({ display_name: displayName, session_id: sessionId || "" }),
+    ]),
+    "responder à mensagem",
+    CHAT_PREDICT_TIMEOUT_MS,
+  );
   const output = objectOutput<{
     reply?: unknown;
     provider?: unknown;
@@ -353,7 +388,11 @@ export async function apiChat(
 
 export async function apiWebSearch(query: string): Promise<WebSearchResult> {
   const client = await chatSpaceClient();
-  const result = await client.predict("/web_search", [query]);
+  const result = await withPredictTimeout(
+    client.predict("/web_search", [query]),
+    "pesquisar na web",
+    CHAT_PREDICT_TIMEOUT_MS,
+  );
   const output = objectOutput<Record<string, unknown>>(result.data, "pesquisa web");
   if (output.success !== true) {
     throw new Error(
@@ -384,7 +423,11 @@ export async function apiImage(
   history: ChatMsg[] = [],
 ): Promise<ImageResult> {
   const client = await imageSpaceClient();
-  const result = await client.predict("/generate_image", [prompt, style, JSON.stringify(history)]);
+  const result = await withPredictTimeout(
+    client.predict("/generate_image", [prompt, style, JSON.stringify(history)]),
+    "gerar a imagem",
+    IMAGE_PREDICT_TIMEOUT_MS,
+  );
   const output = objectOutput<ImagePayload>(result.data, "geração de imagem");
   throwForImageModeration(output);
   const image = await normalizeImageValue(output.image ?? output);
@@ -420,12 +463,16 @@ export async function apiImageWithReference(
     throw new Error("A geração com imagem de referência requer AKIRA_IMAGE_EDIT_SECRET configurado no servidor.");
   }
   const client = await imageSpaceClient();
-  const result = await client.predict("/generate_image_reference", [
-    prompt,
-    imageB64,
-    style,
-    apiSecret,
-  ]);
+  const result = await withPredictTimeout(
+    client.predict("/generate_image_reference", [
+      prompt,
+      imageB64,
+      style,
+      apiSecret,
+    ]),
+    "gerar a imagem com referência",
+    IMAGE_PREDICT_TIMEOUT_MS,
+  );
   const output = objectOutput<ImagePayload>(result.data, "geração com imagem de referência");
   throwForImageModeration(output);
   const image = await normalizeImageValue(output.image ?? output);
@@ -456,7 +503,11 @@ export async function apiEditImage(
     throw new Error("A edição de imagens requer AKIRA_IMAGE_EDIT_SECRET com pelo menos 32 caracteres no servidor.");
   }
   const client = await imageSpaceClient();
-  const result = await client.predict("/edit_image", [prompt, imageB64, apiSecret, providerModel]);
+  const result = await withPredictTimeout(
+    client.predict("/edit_image", [prompt, imageB64, apiSecret, providerModel]),
+    "editar a imagem",
+    IMAGE_PREDICT_TIMEOUT_MS,
+  );
   const output = objectOutput<ImagePayload>(result.data, "edição de imagem");
   throwForImageModeration(output);
   const image = await normalizeImageValue(output.image ?? output);
@@ -518,10 +569,14 @@ export async function apiBotUiFeedback(
 
 export async function apiDescribe(imageB64: string, prompt?: string): Promise<string> {
   const client = await imageSpaceClient();
-  const result = await client.predict("/describe_image", [
-    imageB64,
-    prompt || "Descreve esta imagem em detalhe.",
-  ]);
+  const result = await withPredictTimeout(
+    client.predict("/describe_image", [
+      imageB64,
+      prompt || "Descreve esta imagem em detalhe.",
+    ]),
+    "analisar a imagem anexada",
+    CHAT_PREDICT_TIMEOUT_MS,
+  );
   const output = objectOutput<DescriptionPayload>(result.data, "análise de imagem");
   const description = typeof output.description === "string" ? output.description.trim() : "";
 
