@@ -19,11 +19,6 @@ export default function sitemap(): MetadataRoute.Sitemap {
       priority: 0.7,
     },
     {
-      url: `${siteUrl}/tasks`,
-      changeFrequency: "weekly",
-      priority: 0.6,
-    },
-    {
       url: `${siteUrl}/login`,
       lastModified,
       changeFrequency: "monthly",
