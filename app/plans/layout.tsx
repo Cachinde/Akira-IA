@@ -1,16 +1,24 @@
 import type { Metadata } from "next";
+import { getPublicSiteUrl } from "@/lib/site-url";
+
+const siteUrl = getPublicSiteUrl();
 
 export const metadata: Metadata = {
-  title: "Planos e preços",
-  description: "Compara os planos Gratuito, Pro e Ultra da AKIRA e escolhe o nível de acesso às ferramentas de inteligência artificial.",
+  title: "Planos e Preços",
+  description:
+    "Planos da AKIRA — a IA angolana em português: mensagens grátis todos os dias, geração de imagens e limites generosos no plano pago da SoftEdge Corporation.",
   alternates: { canonical: "/plans" },
   openGraph: {
-    title: "Planos e preços da AKIRA",
-    description: "Compara os planos Gratuito, Pro e Ultra da AKIRA.",
-    url: "/plans",
+    type: "website",
+    locale: "pt_PT",
+    url: `${siteUrl}/plans`,
+    siteName: "AKIRA",
+    title: "Planos e Preços — AKIRA, a IA angolana em português",
+    description:
+      "Conhece os planos da AKIRA: mensagens grátis todos os dias, criação de imagens e limites generosos.",
   },
 };
 
-export default function PlansLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+export default function Layout({ children }: Readonly<{ children: React.ReactNode }>) {
   return children;
 }

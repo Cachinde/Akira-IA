@@ -1,12 +1,24 @@
 import type { Metadata } from "next";
+import { getPublicSiteUrl } from "@/lib/site-url";
+
+const siteUrl = getPublicSiteUrl();
 
 export const metadata: Metadata = {
-  title: "Iniciar sessão",
-  description: "Inicia sessão na AKIRA com Google, uma conta SoftEdge ou um link seguro enviado ao teu e-mail.",
+  title: "Entrar na AKIRA",
+  description:
+    "Entra para continuar a conversar com a AKIRA, a IA angolana em português. Explora ideias, analisa documentos e imagens e cria imagens com IA.",
   alternates: { canonical: "/login" },
-  robots: { index: false, follow: false },
+  openGraph: {
+    type: "website",
+    locale: "pt_PT",
+    url: `${siteUrl}/login`,
+    siteName: "AKIRA",
+    title: "Entrar na AKIRA — a IA angolana em português",
+    description:
+      "Entra para continuar a conversar com a AKIRA, a IA angolana em português da SoftEdge Corporation.",
+  },
 };
 
-export default function LoginLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+export default function Layout({ children }: Readonly<{ children: React.ReactNode }>) {
   return children;
 }
