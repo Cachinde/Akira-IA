@@ -1948,6 +1948,55 @@ export default function Page() {
                   </button>
                 ))}
               </div>
+              <section
+                className="seo-intro"
+                aria-label="Sobre a AKIRA"
+                style={{
+                  maxWidth: 640,
+                  margin: "56px auto 48px",
+                  padding: "0 20px",
+                  color: "#8a8a93",
+                  fontSize: 14,
+                  lineHeight: 1.7,
+                  textAlign: "left",
+                }}
+              >
+                <h2 style={{ color: "#f5f5f7", fontSize: 17, fontWeight: 600, margin: "0 0 8px" }}>
+                  O que é a AKIRA?
+                </h2>
+                <p style={{ margin: "0 0 20px" }}>
+                  A AKIRA é a assistente de inteligência artificial angolana, criada pela SoftEdge Corporation
+                  em Angola. Conversa contigo em português, entende o contexto local e responde com clareza —
+                  uma IA feita para quem fala português.
+                </p>
+                <h2 style={{ color: "#f5f5f7", fontSize: 17, fontWeight: 600, margin: "0 0 8px" }}>
+                  O que podes fazer com a AKIRA?
+                </h2>
+                <ul style={{ margin: "0 0 20px", paddingLeft: 20 }}>
+                  <li>Conversar em português, de forma natural e sem complicação</li>
+                  <li>Analisar documentos e imagens que envias na conversa</li>
+                  <li>Criar imagens com inteligência artificial a partir de uma descrição</li>
+                  <li>Pesquisar na web e resumir o que importa</li>
+                  <li>Organizar tarefas e manter o teu histórico guardado</li>
+                </ul>
+                <h2 style={{ color: "#f5f5f7", fontSize: 17, fontWeight: 600, margin: "0 0 8px" }}>
+                  A AKIRA é grátis?
+                </h2>
+                <p style={{ margin: "0 0 20px" }}>
+                  Sim — tens mensagens grátis todos os dias. Quem precisar de mais espaço pode ver os{" "}
+                  <a href="/plans" style={{ color: "#b7a6ff", textDecoration: "none" }}>planos e preços</a> da
+                  AKIRA, com planos acessíveis pensados para Angola e para o mundo.
+                </p>
+                <h2 style={{ color: "#f5f5f7", fontSize: 17, fontWeight: 600, margin: "0 0 8px" }}>
+                  Como começar a usar a AKIRA?
+                </h2>
+                <p style={{ margin: 0 }}>
+                  É simples: basta{" "}
+                  <a href="/login" style={{ color: "#b7a6ff", textDecoration: "none" }}>entrar ou criar conta</a>{" "}
+                  — sem palavra-passe, apenas um link de acesso. Em segundos estás a conversar com a IA angolana
+                  da SoftEdge Corporation.
+                </p>
+              </section>
             </div>
           )}
 
