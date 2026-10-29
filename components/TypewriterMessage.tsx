@@ -13,8 +13,8 @@ type Props = {
 export function TypewriterMessage({ 
   content, 
   className = "", 
-  typingSpeed = 50,
-  initialDelay = 300
+  typingSpeed = 20,
+  initialDelay = 100
 }: Props) {
   const [displayed, setDisplayed] = useState("");
   const displayRef = useRef(displayed);
