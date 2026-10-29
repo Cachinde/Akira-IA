@@ -44,6 +44,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { RenderSpec } from "@/components/ui-registry";
 import { AkiraMessageRenderer } from "@/components/AkiraMessageRenderer";
+import { TypewriterMessage } from "@/components/TypewriterMessage";
 import { normalizeMath } from "@/components/markdown-plugins";
 import { copyPlainText } from "@/components/md-copy";
 import { parseLegacyUiSpec, parseUiSpecSegmentsPayload, stripUiSpecBlocks } from "@/lib/ui-spec";
@@ -2036,11 +2037,18 @@ export default function Page() {
                     )}
                     <div className={`bubble ${message.role === "assistant" ? "markdown-content" : ""}`}>
                       {message.role === "assistant" ? (
-                        <AssistantMessageContent
-                          content={message.content}
-                          uiSpec={message.uiSpec}
-                          uiSpecSegments={message.uiSpecSegments}
-                        />
+                        message.uiSpec || message.uiSpecSegments ? (
+                          <AssistantMessageContent
+                            content={message.content}
+                            uiSpec={message.uiSpec}
+                            uiSpecSegments={message.uiSpecSegments}
+                          />
+                        ) : (
+                          <TypewriterMessage
+                            content={message.content}
+                            className="bubble markdown-content"
+                          />
+                        )
                       ) : (
                         message.content
                       )}

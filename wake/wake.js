@@ -22,9 +22,7 @@
   async function checkReady(currentRun) {
     while (currentRun === runId) {
       attempts += 1;
-      status.textContent = attempts === 1
-        ? "A iniciar uma ligação segura…"
-        : "A AKIRA está a acordar. Obrigado por aguardares.";
+status.textContent = "A iniciar uma ligação segura…";
 
       const controller = new AbortController();
       const timeout = window.setTimeout(() => controller.abort(), 12000);
