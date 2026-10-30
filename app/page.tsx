@@ -2006,6 +2006,51 @@ export default function Page() {
                   — sem palavra-passe, apenas um link de acesso. Em segundos estás a conversar com a IA angolana
                   da SoftEdge Corporation.
                 </p>
+                <p style={{ margin: "20px 0 0" }}>
+                  Conhece mais{" "}
+                  <a href="/sobre" style={{ color: "#b7a6ff", textDecoration: "none" }}>
+                    sobre a AKIRA, a SoftEdge e o CEO Isaac Quarenta
+                  </a>
+                  .
+                </p>
+                <p style={{ margin: "10px 0 0", fontSize: 13, opacity: 0.8 }}>
+                  Referências:{" "}
+                  <a
+                    href="https://softedge-corporation.up.railway.app/"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{ color: "#b7a6ff", textDecoration: "none" }}
+                  >
+                    SoftEdge Corporation
+                  </a>{" "}
+                  ·{" "}
+                  <a
+                    href="https://isaacquarenta.com/"
+                    target="_blank"
+                    rel="noopener noreferrer author"
+                    style={{ color: "#b7a6ff", textDecoration: "none" }}
+                  >
+                    Isaac Quarenta
+                  </a>{" "}
+                  ·{" "}
+                  <a
+                    href="https://x.com/IQuarenta98960"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{ color: "#b7a6ff", textDecoration: "none" }}
+                  >
+                    X
+                  </a>{" "}
+                  ·{" "}
+                  <a
+                    href="https://github.com/Cachinde/Akira-IA"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{ color: "#b7a6ff", textDecoration: "none" }}
+                  >
+                    GitHub
+                  </a>
+                </p>
               </section>
               )}
             </div>

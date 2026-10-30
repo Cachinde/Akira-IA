@@ -14,5 +14,18 @@ const nextConfig = {
   turbopack: {
     root: path.dirname(fileURLToPath(import.meta.url)),
   },
+  async headers() {
+    return [
+      {
+        source: "/:path*",
+        headers: [
+          {
+            key: "Link",
+            value: '</llms.txt>; rel="describedby"',
+          },
+        ],
+      },
+    ];
+  },
 };
 export default nextConfig;

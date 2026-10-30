@@ -1,15 +1,65 @@
 import type { MetadataRoute } from "next";
 import { getPublicSiteUrl } from "@/lib/site-url";
 
+const ALLOWED_PATHS = [
+  "/",
+  "/sobre",
+  "/login",
+  "/plans",
+  "/tasks",
+  "/share/",
+  "/api/share/",
+  "/_next/",
+  "/llms.txt",
+  "/sitemap.xml",
+];
+
+const DISALLOWED_PATHS = ["/api/", "/account/"];
+
+const AI_CRAWLERS = [
+  "GPTBot",
+  "OAI-SearchBot",
+  "ChatGPT-User",
+  "Googlebot",
+  "Google-Extended",
+  "Bingbot",
+  "ClaudeBot",
+  "Claude-User",
+  "Claude-SearchBot",
+  "anthropic-ai",
+  "PerplexityBot",
+  "Perplexity-User",
+  "Applebot",
+  "Applebot-Extended",
+  "CCBot",
+  "cohere-ai",
+  "meta-externalagent",
+  "Bytespider",
+  "Amazonbot",
+  "YouBot",
+  "DuckAssistBot",
+  "MistralAI-User",
+  "Bravebot",
+  "GrokBot",
+  "xAI-Crawler",
+];
+
 export default function robots(): MetadataRoute.Robots {
   const siteUrl = getPublicSiteUrl();
 
   return {
-    rules: {
-      userAgent: "*",
-      allow: ["/", "/login", "/plans", "/tasks", "/api/share/", "/share/", "/_next/"],
-      disallow: ["/api/", "/account/"],
-    },
+    rules: [
+      {
+        userAgent: "*",
+        allow: ALLOWED_PATHS,
+        disallow: DISALLOWED_PATHS,
+      },
+      ...AI_CRAWLERS.map((userAgent) => ({
+        userAgent,
+        allow: ALLOWED_PATHS,
+        disallow: DISALLOWED_PATHS,
+      })),
+    ],
     sitemap: `${siteUrl}/sitemap.xml`,
     host: siteUrl,
   };

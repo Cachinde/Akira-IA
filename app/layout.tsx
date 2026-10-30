@@ -19,16 +19,16 @@ const manrope = Manrope({
 });
 
 const siteUrl = getPublicSiteUrl();
-  const shareImageUrl = new URL("/akira-og.png", siteUrl).toString();
+const shareImageUrl = new URL("/akira-og.png", siteUrl).toString();
 
-  export const metadata: Metadata = {
+export const metadata: Metadata = {
     metadataBase: new URL(siteUrl),
     title: {
       default: "AKIRA — Assistente de IA em português",
       template: "%s | AKIRA",
     },
     applicationName: "AKIRA",
-    description: "A IA angolana que conversa em português: explora ideias, analisa documentos e imagens e cria imagens com inteligência artificial. Da SoftEdge Corporation, Angola.",
+    description: "A IA angolana que conversa em português: explora ideias, analisa documentos e imagens e cria imagens com inteligência artificial. Da SoftEdge Corporation, Angola, liderada pelo co-fundador e CEO Isaac Quarenta.",
     keywords: [
       "AKIRA",
       "akira IA",
@@ -68,15 +68,33 @@ const siteUrl = getPublicSiteUrl();
       "SoftEdge Corporation",
       "AKIRA Angola",
       "softedge akira",
+      "Isaac Quarenta",
+      "Isaac Nascimento Quarenta",
+      "Isaac Quarenta CEO",
+      "Isaac Quarenta Angolano",
+      "CEO da SoftEdge",
+      "fundador da SoftEdge",
+      "criador da AKIRA",
       "Luanda",
       "Angola",
     ],
-    authors: [{ name: "SoftEdge Corporation", url: "https://softedge-corporation.up.railway.app/" }],
+    authors: [
+      { name: "SoftEdge Corporation", url: "https://softedge-corporation.up.railway.app/" },
+      { name: "Isaac Quarenta", url: "https://isaacquarenta.com/" },
+    ],
     creator: "SoftEdge Corporation - Angola",
     publisher: "SoftEdge Corporation - Angola",
     alternates: { canonical: "/" },
     verification: {
       google: process.env.GOOGLE_SITE_VERIFICATION || "qTOzIc73G2LzIVLTZV4IX1tMx2-rICf5tBJtEogkwDg",
+      other: {
+        ...(process.env.BING_SITE_VERIFICATION
+          ? { "msvalidate.01": process.env.BING_SITE_VERIFICATION }
+          : {}),
+        ...(process.env.YANDEX_SITE_VERIFICATION
+          ? { "yandex-verification": process.env.YANDEX_SITE_VERIFICATION }
+          : {}),
+      },
     },
     icons: {
       icon: [
@@ -137,8 +155,33 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           "@id": `${siteUrl}/#organization`,
           name: "SoftEdge Corporation",
           url: "https://softedge-corporation.up.railway.app/",
+          logo: new URL("/akira-logo.png", siteUrl).toString(),
           slogan: "A IA angolana para as tuas ideias",
+          description: "A SoftEdge Corporation é uma empresa de tecnologia angolana criadora da AKIRA, a assistente de inteligência artificial em português.",
           areaServed: { "@type": "Country", name: "Angola" },
+          founder: { "@id": `${siteUrl}/#isaac-quarenta` },
+          sameAs: [
+            "https://softedge-corporation.up.railway.app/",
+            "https://isaacquarenta.com/",
+            "https://x.com/IQuarenta98960",
+            "https://akira-wake.onrender.com/",
+            "https://github.com/Cachinde/Akira-IA",
+          ],
+        },
+        {
+          "@type": "Person",
+          "@id": `${siteUrl}/#isaac-quarenta`,
+          name: "Isaac Quarenta",
+          alternateName: ["Isaac Nascimento Quarenta"],
+          jobTitle: "Co-fundador e CEO",
+          description: "Isaac Quarenta é o co-fundador e CEO da SoftEdge Corporation e o principal visionário da AKIRA, a assistente de inteligência artificial angolana em português.",
+          worksFor: { "@id": `${siteUrl}/#organization` },
+          nationality: { "@type": "Country", name: "Angola" },
+          url: "https://isaacquarenta.com/",
+          sameAs: [
+            "https://isaacquarenta.com/",
+            "https://x.com/IQuarenta98960",
+          ],
         },
       {
         "@type": "WebSite",
@@ -158,8 +201,12 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         isAccessibleForFree: true,
         inLanguage: "pt-PT",
         url: siteUrl,
-          description: "A IA angolana em português para conversar, explorar ideias, analisar documentos e imagens e criar imagens.",
+        description: "A IA angolana em português para conversar, explorar ideias, analisar documentos e imagens e criar imagens.",
         publisher: { "@id": `${siteUrl}/#organization` },
+        sameAs: [
+          "https://github.com/Cachinde/Akira-IA",
+          "https://akira-wake.onrender.com/",
+        ],
       },
     ],
   };

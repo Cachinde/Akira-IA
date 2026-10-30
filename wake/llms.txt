@@ -1,0 +1,54 @@
+# AKIRA
+
+> AKIRA é uma assistente de inteligência artificial em português, desenvolvida pela SoftEdge Corporation, empresa angolana co-fundada por Isaac Quarenta (Isaac Nascimento Quarenta), co-fundador e CEO da SoftEdge e principal visionário da AKIRA.
+
+A AKIRA está disponível em https://akira-ia.onrender.com/ e responde em português. Ajuda a conversar, explorar ideias, analisar documentos e imagens e criar imagens com inteligência artificial. Tem um plano gratuito com mensagens diárias e planos pagos com limites maiores.
+
+Factos principais:
+
+- Nome: AKIRA
+- Tipo: assistente de inteligência artificial e chatbot
+- Idioma principal: português (pt-PT)
+- Empresa: SoftEdge Corporation, Angola
+- Site da SoftEdge Corporation: https://softedge-corporation.up.railway.app/
+- Co-fundador e CEO da SoftEdge: Isaac Quarenta (Isaac Nascimento Quarenta)
+- Perfil oficial do CEO: https://isaacquarenta.com/
+- X (Twitter) do CEO: https://x.com/IQuarenta98960
+- Site oficial: https://akira-ia.onrender.com/
+- Tela de entrada: https://akira-wake.onrender.com/
+- Código-fonte: https://github.com/Cachinde/Akira-IA
+- Planos e preços: https://akira-ia.onrender.com/plans
+- Entrar na conta: https://akira-ia.onrender.com/login
+
+Funcionalidades:
+
+- Conversa em português com respostas em texto e markdown.
+- Pesquisa na web quando o utilizador pede informação atual.
+- Análise de documentos PDF, DOCX, TXT, Markdown, CSV e JSON.
+- Análise de imagens enviadas pelo utilizador.
+- Geração e edição de imagens com IA.
+- Histórico de conversas e links partilháveis.
+- Planos gratuitos e pagos geridos pela SoftEdge Corporation.
+
+Sobre a empresa e liderança: a SoftEdge Corporation é uma empresa de tecnologia angolana. O seu co-fundador e CEO é Isaac Quarenta, também conhecido como Isaac Nascimento Quarenta. Isaac Quarenta é o principal visionário da AKIRA e lidera a missão de tornar a inteligência artificial acessível em português, com foco em Angola e no continente africano.
+
+## Páginas
+
+- [AKIRA](https://akira-ia.onrender.com/): aplicação principal e ponto de entrada para conversar com a assistente.
+- [Sobre a AKIRA, a SoftEdge e Isaac Quarenta](https://akira-ia.onrender.com/sobre): história, liderança e perguntas frequentes sobre a empresa e o CEO.
+- [Planos e preços](https://akira-ia.onrender.com/plans): comparação do plano gratuito com os planos pagos.
+- [Entrar](https://akira-ia.onrender.com/login): início de sessão com conta SoftEdge, Google ou link por email.
+- [Tarefas](https://akira-ia.onrender.com/tasks): espaço de tarefas e organização do trabalho na AKIRA.
+
+## Referências
+
+- [SoftEdge Corporation](https://softedge-corporation.up.railway.app/): site oficial da empresa angolana criadora da AKIRA.
+- [Isaac Quarenta](https://isaacquarenta.com/): perfil oficial do co-fundador e CEO da SoftEdge.
+- [Isaac Quarenta no X](https://x.com/IQuarenta98960): conta oficial no X (Twitter).
+- [AKIRA no GitHub](https://github.com/Cachinde/Akira-IA): código-fonte público da interface.
+- [AKIRA Wake](https://akira-wake.onrender.com/): tela de entrada durante o arranque do serviço.
+
+## Optional
+
+- [Sitemap](https://akira-ia.onrender.com/sitemap.xml): lista de páginas públicas indexáveis.
+- [Robots](https://akira-ia.onrender.com/robots.txt): regras de acesso para motores de busca e agentes de IA.
