@@ -1472,7 +1472,18 @@ export default function Page() {
       if (!authSnapshot.historyScope) {
         throw new Error("Não foi possível associar o pedido à conta atual.");
       }
-      await saveChat(authSnapshot.historyScope, queuedChat);
+      try {
+        await saveChat(authSnapshot.historyScope, queuedChat);
+      } catch (storageFailure: unknown) {
+        // Navegador bloqueou o guardar local: a conversa segue em memória,
+        // o envio e a resposta da AKIRA continuam normalmente.
+        setStorageError(
+          storageFailure instanceof Error
+            ? storageFailure.message
+            : "Não foi possível guardar a conversa.",
+        );
+        setHistoryWritable(false);
+      }
       if (imageRequest) {
         const response = await fetch("/api/image", {
           method: "POST",

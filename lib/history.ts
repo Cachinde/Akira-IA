@@ -37,13 +37,25 @@ const DATABASE = "akira-bot-ui";
 const STORE = "conversations";
 let databasePromise: Promise<IDBDatabase> | undefined;
 
+// Alguns navegadores/bloqueadores negam o IndexedDB ("user denied permission to
+// access the database"). A AKIRA deve continuar a funcionar em memória nesses casos.
+function describeStorageFailure(reason: unknown): Error {
+  const name = reason instanceof Error ? reason.name : "";
+  if (name === "SecurityError" || name === "NotAllowedError") {
+    return new Error(
+      "O navegador bloqueou o histórico local. A AKIRA continua a funcionar, mas não vai lembrar as conversas neste dispositivo.",
+    );
+  }
+  return reason instanceof Error ? reason : new Error("Não foi possível abrir o histórico.");
+}
+
 function openDatabase(): Promise<IDBDatabase> {
   if (typeof indexedDB === "undefined") {
     return Promise.reject(new Error("Este navegador não suporta o histórico local."));
   }
 
   if (!databasePromise) {
-    databasePromise = new Promise((resolve, reject) => {
+    const attempt = new Promise<IDBDatabase>((resolve, reject) => {
       const request = indexedDB.open(DATABASE, 2);
       request.onupgradeneeded = () => {
         if (!request.result.objectStoreNames.contains(STORE)) {
@@ -53,10 +65,20 @@ function openDatabase(): Promise<IDBDatabase> {
           request.result.createObjectStore("tasks", { keyPath: "id" });
         }
       };
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error || new Error("Não foi possível abrir o histórico."));
-      request.onblocked = () => reject(new Error("O histórico está bloqueado por outra aba."));
+      request.onsuccess = () => {
+        const database = request.result;
+        database.onversionchange = () => database.close();
+        resolve(database);
+      };
+      request.onerror = () => reject(describeStorageFailure(request.error));
+      request.onblocked = () =>
+        reject(new Error("O histórico está bloqueado por outra aba. Fecha essa aba e tenta de novo."));
     });
+    attempt.catch(() => {
+      // Não manter em cache uma falha: as próximas chamadas voltam a tentar.
+      if (databasePromise === attempt) databasePromise = undefined;
+    });
+    databasePromise = attempt;
   }
 
   return databasePromise;

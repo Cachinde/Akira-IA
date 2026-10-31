@@ -12,13 +12,25 @@ const STORE = "tasks";
 const MAX_TITLE_LENGTH = 120;
 let databasePromise: Promise<IDBDatabase> | undefined;
 
+// Alguns navegadores/bloqueadores negam o IndexedDB ("user denied permission to
+// access the database"). A página de tarefas deve degradar com uma mensagem clara.
+function describeStorageFailure(reason: unknown): Error {
+  const name = reason instanceof Error ? reason.name : "";
+  if (name === "SecurityError" || name === "NotAllowedError") {
+    return new Error(
+      "O navegador bloqueou o guardar local. As tarefas não ficam guardadas neste dispositivo até o acesso ser permitido.",
+    );
+  }
+  return reason instanceof Error ? reason : new Error("Não foi possível abrir as tarefas.");
+}
+
 function openDatabase(): Promise<IDBDatabase> {
   if (typeof indexedDB === "undefined") {
     return Promise.reject(new Error("Este navegador não suporta o armazenamento local."));
   }
 
   if (!databasePromise) {
-    databasePromise = new Promise((resolve, reject) => {
+    const attempt = new Promise<IDBDatabase>((resolve, reject) => {
       const request = indexedDB.open(DATABASE, 2);
       request.onupgradeneeded = () => {
         if (!request.result.objectStoreNames.contains("conversations")) {
@@ -28,10 +40,20 @@ function openDatabase(): Promise<IDBDatabase> {
           request.result.createObjectStore(STORE, { keyPath: "id" });
         }
       };
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error || new Error("Não foi possível abrir as tarefas."));
-      request.onblocked = () => reject(new Error("As tarefas estão bloqueadas por outra aba."));
+      request.onsuccess = () => {
+        const database = request.result;
+        database.onversionchange = () => database.close();
+        resolve(database);
+      };
+      request.onerror = () => reject(describeStorageFailure(request.error));
+      request.onblocked = () =>
+        reject(new Error("As tarefas estão bloqueadas por outra aba. Fecha essa aba e tenta de novo."));
     });
+    attempt.catch(() => {
+      // Não manter em cache uma falha: as próximas chamadas voltam a tentar.
+      if (databasePromise === attempt) databasePromise = undefined;
+    });
+    databasePromise = attempt;
   }
 
   return databasePromise;
