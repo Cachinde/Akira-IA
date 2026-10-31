@@ -318,6 +318,8 @@ export default function Page() {
   const chatsRef = useRef(chats);
   chatsRef.current = chats;
   const sessionToastedRef = useRef(false);
+  // Ids de mensagens restauradas do histórico: NUNCA re-animam o simulador de escrita.
+  const restoredMessageIdsRef = useRef<Set<string>>(new Set());
 
   const activeChat = chats.find((chat) => chat.id === activeId) || null;
   const messages = activeChat?.messages || [];
@@ -362,12 +364,16 @@ export default function Page() {
     activeIdRef.current = null;
     draftsRef.current = {};
     queuedMessagesRef.current = {};
+    restoredMessageIdsRef.current = new Set();
     setQueuedCounts({});
     activeSessionVersionRef.current += 1;
     setActiveSessionVersion(activeSessionVersionRef.current);
     loadChats(authSnapshot.historyScope)
       .then((list) => {
         if (!active) return;
+        restoredMessageIdsRef.current = new Set(
+          list.flatMap((chat) => chat.messages.map((message) => message.id)),
+        );
         setChats(list);
         chatsRef.current = list;
         setHistoryWritable(true);
@@ -2083,6 +2089,7 @@ export default function Page() {
                           <TypewriterMessage
                             content={message.content}
                             className="bubble markdown-content"
+                            animate={!restoredMessageIdsRef.current.has(message.id)}
                           />
                         )
                       ) : (

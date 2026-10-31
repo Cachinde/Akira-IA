@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Script from "next/script";
 import { DM_Sans, Manrope } from "next/font/google";
 import "katex/dist/katex.min.css";
 import "./globals.css";
@@ -225,6 +226,11 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData).replace(/</g, "\\u003c") }}
         />
         {children}
+        <Script
+          src="https://analytics.ahrefs.com/analytics.js"
+          strategy="afterInteractive"
+          data-key="z1rr24SvsAN2JPAw8fsrOw"
+        />
       </body>
     </html>
   );
