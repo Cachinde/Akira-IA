@@ -4,16 +4,19 @@ import { getPublicSiteUrl } from "@/lib/site-url";
 const ALLOWED_PATHS = [
   "/",
   "/sobre",
+  "/ia-angolana",
+  "/gerar-imagens-ia",
   "/login",
   "/plans",
   "/tasks",
   "/share/",
-  "/api/share/",
   "/_next/",
   "/llms.txt",
   "/sitemap.xml",
 ];
 
+// Cibersegurança: robots.txt é apenas orientativo — o bloqueio real das rotas
+// sensíveis é feito no servidor (autenticação nas rotas /api/ e /account/).
 const DISALLOWED_PATHS = ["/api/", "/account/"];
 
 const AI_CRAWLERS = [
@@ -61,6 +64,5 @@ export default function robots(): MetadataRoute.Robots {
       })),
     ],
     sitemap: `${siteUrl}/sitemap.xml`,
-    host: siteUrl,
   };
 }

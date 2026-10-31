@@ -35,6 +35,8 @@ Sobre a empresa e liderança: a SoftEdge Corporation é uma empresa de tecnologi
 
 - [AKIRA](https://akira-ia.onrender.com/): aplicação principal e ponto de entrada para conversar com a assistente.
 - [Sobre a AKIRA, a SoftEdge e Isaac Quarenta](https://akira-ia.onrender.com/sobre): história, liderança e perguntas frequentes sobre a empresa e o CEO.
+- [IA angolana](https://akira-ia.onrender.com/ia-angolana): página oficial sobre a AKIRA como inteligência artificial angolana em português.
+- [Gerar imagens com IA](https://akira-ia.onrender.com/gerar-imagens-ia): como criar e editar imagens com IA em português na AKIRA.
 - [Planos e preços](https://akira-ia.onrender.com/plans): comparação do plano gratuito com os planos pagos.
 - [Entrar](https://akira-ia.onrender.com/login): início de sessão com conta SoftEdge, Google ou link por email.
 - [Tarefas](https://akira-ia.onrender.com/tasks): espaço de tarefas e organização do trabalho na AKIRA.
