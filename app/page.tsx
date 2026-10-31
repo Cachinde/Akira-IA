@@ -2025,21 +2025,12 @@ export default function Page() {
                   </a>{" "}
                   ·{" "}
                   <a
-                    href="https://isaacquarenta.com/"
+                    href="https://x.com/IQuarenta98960"
                     target="_blank"
                     rel="noopener noreferrer author"
                     style={{ color: "#b7a6ff", textDecoration: "none" }}
                   >
-                    Isaac Quarenta
-                  </a>{" "}
-                  ·{" "}
-                  <a
-                    href="https://x.com/IQuarenta98960"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    style={{ color: "#b7a6ff", textDecoration: "none" }}
-                  >
-                    X
+                    Isaac Quarenta (X)
                   </a>{" "}
                   ·{" "}
                   <a

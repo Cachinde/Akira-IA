@@ -23,6 +23,10 @@ const nextConfig = {
             key: "Link",
             value: '</llms.txt>; rel="describedby"',
           },
+          {
+            key: "Permissions-Policy",
+            value: "indexed-db=(self), persistent-storage=(self)",
+          },
         ],
       },
     ];

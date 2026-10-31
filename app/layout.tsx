@@ -80,10 +80,18 @@ export const metadata: Metadata = {
     ],
     authors: [
       { name: "SoftEdge Corporation", url: "https://softedge-corporation.up.railway.app/" },
-      { name: "Isaac Quarenta", url: "https://isaacquarenta.com/" },
+      { name: "Isaac Quarenta", url: "https://x.com/IQuarenta98960" },
     ],
     creator: "SoftEdge Corporation - Angola",
     publisher: "SoftEdge Corporation - Angola",
+    category: "Tecnologia e Inteligência Artificial",
+    other: {
+      "geo.region": "AO",
+      "geo.placename": "Luanda, Angola",
+      "geo.position": "-8.839988;13.289437",
+      ICBM: "-8.839988, 13.289437",
+      "content-language": "pt-PT",
+    },
     alternates: { canonical: "/" },
     verification: {
       google: process.env.GOOGLE_SITE_VERIFICATION || "qTOzIc73G2LzIVLTZV4IX1tMx2-rICf5tBJtEogkwDg",
@@ -162,7 +170,6 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           founder: { "@id": `${siteUrl}/#isaac-quarenta` },
           sameAs: [
             "https://softedge-corporation.up.railway.app/",
-            "https://isaacquarenta.com/",
             "https://x.com/IQuarenta98960",
             "https://akira-wake.onrender.com/",
             "https://github.com/Cachinde/Akira-IA",
@@ -177,9 +184,8 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           description: "Isaac Quarenta é o co-fundador e CEO da SoftEdge Corporation e o principal visionário da AKIRA, a assistente de inteligência artificial angolana em português.",
           worksFor: { "@id": `${siteUrl}/#organization` },
           nationality: { "@type": "Country", name: "Angola" },
-          url: "https://isaacquarenta.com/",
+          url: "https://x.com/IQuarenta98960",
           sameAs: [
-            "https://isaacquarenta.com/",
             "https://x.com/IQuarenta98960",
           ],
         },

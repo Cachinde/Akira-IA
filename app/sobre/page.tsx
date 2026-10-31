@@ -75,7 +75,6 @@ const structuredData = {
       founder: { "@id": `${siteUrl}/#isaac-quarenta` },
       sameAs: [
         "https://softedge-corporation.up.railway.app/",
-        "https://isaacquarenta.com/",
         "https://x.com/IQuarenta98960",
         "https://akira-wake.onrender.com/",
         "https://github.com/Cachinde/Akira-IA",
@@ -91,9 +90,8 @@ const structuredData = {
         "Isaac Quarenta é co-fundador e CEO da SoftEdge Corporation e o principal visionário da AKIRA, a assistente de inteligência artificial angolana em português.",
       worksFor: { "@id": `${siteUrl}/#organization` },
       nationality: { "@type": "Country", name: "Angola" },
-      url: "https://isaacquarenta.com/",
+      url: "https://x.com/IQuarenta98960",
       sameAs: [
-        "https://isaacquarenta.com/",
         "https://x.com/IQuarenta98960",
       ],
     },
@@ -147,6 +145,24 @@ const structuredData = {
             "@type": "Answer",
             text: "Podes usar a AKIRA diretamente no site oficial. Basta entrar ou criar conta para começares a conversar.",
           },
+        },
+      ],
+    },
+    {
+      "@type": "BreadcrumbList",
+      "@id": `${siteUrl}/sobre#breadcrumb`,
+      itemListElement: [
+        {
+          "@type": "ListItem",
+          position: 1,
+          name: "Início",
+          item: `${siteUrl}/`,
+        },
+        {
+          "@type": "ListItem",
+          position: 2,
+          name: "Sobre",
+          item: `${siteUrl}/sobre`,
         },
       ],
     },
@@ -244,11 +260,7 @@ export default function SobrePage() {
           </p>
           <p style={paragraphStyle}>
             Podes acompanhar o trabalho de Isaac Quarenta no{" "}
-            <a href="https://isaacquarenta.com/" target="_blank" rel="noopener noreferrer author" style={linkStyle}>
-              site oficial
-            </a>{" "}
-            e no{" "}
-            <a href="https://x.com/IQuarenta98960" target="_blank" rel="noopener noreferrer" style={linkStyle}>
+            <a href="https://x.com/IQuarenta98960" target="_blank" rel="noopener noreferrer author" style={linkStyle}>
               X (Twitter)
             </a>.
           </p>
@@ -302,22 +314,12 @@ export default function SobrePage() {
             </li>
             <li>
               <a
-                href="https://isaacquarenta.com/"
+                href="https://x.com/IQuarenta98960"
                 target="_blank"
                 rel="noopener noreferrer author"
                 style={linkStyle}
               >
-                Site oficial de Isaac Quarenta
-              </a>
-            </li>
-            <li>
-              <a
-                href="https://x.com/IQuarenta98960"
-                target="_blank"
-                rel="noopener noreferrer"
-                style={linkStyle}
-              >
-                Isaac Quarenta no X (Twitter)
+                Perfil oficial de Isaac Quarenta no X (Twitter)
               </a>
             </li>
             <li>

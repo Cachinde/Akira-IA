@@ -12,8 +12,7 @@ Factos principais:
 - Empresa: SoftEdge Corporation, Angola
 - Site da SoftEdge Corporation: https://softedge-corporation.up.railway.app/
 - Co-fundador e CEO da SoftEdge: Isaac Quarenta (Isaac Nascimento Quarenta)
-- Perfil oficial do CEO: https://isaacquarenta.com/
-- X (Twitter) do CEO: https://x.com/IQuarenta98960
+- Perfil oficial do CEO no X: https://x.com/IQuarenta98960
 - Site oficial: https://akira-ia.onrender.com/
 - Tela de entrada: https://akira-wake.onrender.com/
 - Código-fonte: https://github.com/Cachinde/Akira-IA
@@ -43,8 +42,7 @@ Sobre a empresa e liderança: a SoftEdge Corporation é uma empresa de tecnologi
 ## Referências
 
 - [SoftEdge Corporation](https://softedge-corporation.up.railway.app/): site oficial da empresa angolana criadora da AKIRA.
-- [Isaac Quarenta](https://isaacquarenta.com/): perfil oficial do co-fundador e CEO da SoftEdge.
-- [Isaac Quarenta no X](https://x.com/IQuarenta98960): conta oficial no X (Twitter).
+- [Isaac Quarenta no X](https://x.com/IQuarenta98960): perfil oficial do co-fundador e CEO da SoftEdge.
 - [AKIRA no GitHub](https://github.com/Cachinde/Akira-IA): código-fonte público da interface.
 - [AKIRA Wake](https://akira-wake.onrender.com/): tela de entrada durante o arranque do serviço.
 
