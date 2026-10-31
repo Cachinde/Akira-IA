@@ -45,6 +45,7 @@ import remarkGfm from "remark-gfm";
 import type { RenderSpec } from "@/components/ui-registry";
 import { AkiraMessageRenderer } from "@/components/AkiraMessageRenderer";
 import { TypewriterMessage } from "@/components/TypewriterMessage";
+import { StoragePermissionBanner } from "@/components/StoragePermissionBanner";
 import { normalizeMath } from "@/components/markdown-plugins";
 import { copyPlainText } from "@/components/md-copy";
 import { parseLegacyUiSpec, parseUiSpecSegmentsPayload, stripUiSpecBlocks } from "@/lib/ui-spec";
@@ -2547,6 +2548,7 @@ export default function Page() {
          </section>
        </div>
       )}
+      <StoragePermissionBanner />
       {storageError && (
         <div className="toast-note toast-error toast-sticky" role="alert">
           <span className="toast-icon"><ShieldAlert size={13} /></span>
