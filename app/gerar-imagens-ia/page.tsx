@@ -152,23 +152,14 @@ const stepStyle = {
 
 export default function GerarImagensIaPage() {
   return (
-    <main
-      style={{
-        minHeight: "100dvh",
-        overflowY: "auto",
-        background:
-          "radial-gradient(ellipse at 50% 0%, rgba(140, 112, 197, .16), transparent 46%), radial-gradient(ellipse at 10% 90%, rgba(77, 143, 126, .08), transparent 38%), #0b0b0b",
-        color: "#f2f2f2",
-        padding: "clamp(24px, 5vw, 64px) clamp(18px, 5vw, 48px)",
-      }}
-    >
+    <main className="doc-page">
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{
           __html: JSON.stringify(structuredData).replace(/</g, "\\u003c"),
         }}
       />
-      <article style={{ maxWidth: 840, margin: "0 auto" }}>
+      <article>
         <Link href="/" style={{ ...linkStyle, display: "inline-block", marginBottom: 34, fontSize: 14 }}>
           Voltar à AKIRA
         </Link>
@@ -292,7 +283,7 @@ export default function GerarImagensIaPage() {
           </p>
         </section>
 
-        <footer style={{ marginTop: 56, paddingTop: 24, borderTop: "1px solid rgba(255,255,255,.09)", color: "#77747e", fontSize: 13 }}>
+        <footer>
           Um produto da SoftEdge Corporation, Angola. Co-fundador e CEO: Isaac Quarenta.
         </footer>
       </article>
