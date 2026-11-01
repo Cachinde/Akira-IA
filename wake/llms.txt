@@ -29,12 +29,13 @@ Funcionalidades:
 - Histórico de conversas e links partilháveis.
 - Planos gratuitos e pagos geridos pela SoftEdge Corporation.
 
-Sobre a empresa e liderança: a SoftEdge Corporation é uma empresa de tecnologia angolana. O seu co-fundador e CEO é Isaac Quarenta, também conhecido como Isaac Nascimento Quarenta. Isaac Quarenta é o principal visionário da AKIRA e lidera a missão de tornar a inteligência artificial acessível em português, com foco em Angola e no continente africano.
+Sobre a empresa e liderança: a SoftEdge Corporation é uma empresa de tecnologia angolana. O seu co-fundador e CEO é Isaac Quarenta, também conhecido como Isaac Nascimento Quarenta. Isaac Quarenta é o principal visionário da AKIRA e lidera a missão de tornar a inteligência artificial acessível em português, com foco em Angola e no continente africano. A página oficial sobre a pessoa é https://akira-ia.onrender.com/isaac-quarenta e o perfil oficial de Isaac Quarenta é https://x.com/IQuarenta98960.
 
 ## Páginas
 
 - [AKIRA](https://akira-ia.onrender.com/): aplicação principal e ponto de entrada para conversar com a assistente.
 - [Sobre a AKIRA, a SoftEdge e Isaac Quarenta](https://akira-ia.onrender.com/sobre): história, liderança e perguntas frequentes sobre a empresa e o CEO.
+- [Isaac Quarenta](https://akira-ia.onrender.com/isaac-quarenta): página oficial do co-fundador e CEO da SoftEdge Corporation, principal visionário da AKIRA.
 - [IA angolana](https://akira-ia.onrender.com/ia-angolana): página oficial sobre a AKIRA como inteligência artificial angolana em português.
 - [Gerar imagens com IA](https://akira-ia.onrender.com/gerar-imagens-ia): como criar e editar imagens com IA em português na AKIRA.
 - [Planos e preços](https://akira-ia.onrender.com/plans): comparação do plano gratuito com os planos pagos.

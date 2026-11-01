@@ -247,7 +247,11 @@ export default function SobrePage() {
             Isaac Quarenta, também conhecido como Isaac Nascimento Quarenta, é um empreendedor
             angolano, co-fundador e CEO da SoftEdge Corporation. É o principal visionário da AKIRA e
             lidera a missão de tornar a inteligência artificial acessível em português, com especial
-            atenção a Angola e ao continente africano.
+            atenção a Angola e ao continente africano. Página oficial:{" "}
+            <Link href="/isaac-quarenta" style={linkStyle}>
+              Isaac Quarenta — co-fundador e CEO da SoftEdge
+            </Link>
+            .
           </p>
           <p style={paragraphStyle}>
             Podes acompanhar o trabalho de Isaac Quarenta no{" "}

@@ -5,6 +5,7 @@ const ALLOWED_PATHS = [
   "/",
   "/sobre",
   "/ia-angolana",
+  "/isaac-quarenta",
   "/gerar-imagens-ia",
   "/login",
   "/plans",
