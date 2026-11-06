@@ -133,6 +133,28 @@ export async function ensureBillingSchema(): Promise<void> {
         );
         CREATE INDEX IF NOT EXISTS akira_chat_jobs_updated_at
           ON akira_chat_jobs (updated_at);
+        CREATE TABLE IF NOT EXISTS akira_conversations (
+          user_id UUID NOT NULL REFERENCES akira_billing_accounts(user_id) ON DELETE CASCADE,
+          conversation_id TEXT NOT NULL,
+          title TEXT NOT NULL,
+          messages JSONB NOT NULL DEFAULT '[]'::jsonb,
+          pending_request JSONB,
+          created_at TIMESTAMPTZ NOT NULL,
+          updated_at TIMESTAMPTZ NOT NULL,
+          PRIMARY KEY (user_id, conversation_id)
+        );
+        CREATE INDEX IF NOT EXISTS akira_conversations_updated_at
+          ON akira_conversations (user_id, updated_at DESC);
+        CREATE TABLE IF NOT EXISTS akira_tasks (
+          user_id UUID NOT NULL REFERENCES akira_billing_accounts(user_id) ON DELETE CASCADE,
+          task_id UUID NOT NULL,
+          title TEXT NOT NULL,
+          done BOOLEAN NOT NULL DEFAULT FALSE,
+          created_at TIMESTAMPTZ NOT NULL,
+          PRIMARY KEY (user_id, task_id)
+        );
+        CREATE INDEX IF NOT EXISTS akira_tasks_user_created_at
+          ON akira_tasks (user_id, done, created_at DESC);
         CREATE TABLE IF NOT EXISTS akira_message_feedback (
           user_id UUID NOT NULL REFERENCES akira_billing_accounts(user_id) ON DELETE CASCADE,
           message_id UUID NOT NULL,
@@ -164,7 +186,7 @@ export type ImageJobResult = {
 export type ChatJobRequest = {
   message: string;
   imageB64?: string;
-  history: { role: "user" | "assistant"; content: string }[];
+  history: { role: "user" | "assistant"; content: string; createdAt?: string }[];
   displayName: string;
   chatId?: string;
 };

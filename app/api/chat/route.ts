@@ -136,14 +136,20 @@ export async function POST(req: NextRequest) {
   const history = Array.isArray(input.history)
     ? input.history
         .filter(
-          (item): item is { role: "user" | "assistant"; content: string } =>
+          (item): item is Record<string, unknown> & { role: "user" | "assistant"; content: string } =>
             !!item &&
             typeof item === "object" &&
             ((item as Record<string, unknown>).role === "user" ||
               (item as Record<string, unknown>).role === "assistant") &&
             typeof (item as Record<string, unknown>).content === "string",
         )
-        .map(({ role, content }) => ({ role, content: content.slice(0, 8_000) }))
+        .map(({ role, content, createdAt }) => ({
+          role,
+          content: content.slice(0, 8_000),
+          ...(typeof createdAt === "string" && !Number.isNaN(Date.parse(createdAt))
+            ? { createdAt }
+            : {}),
+        }))
         .slice(-40)
     : [];
   const jobId =
@@ -167,8 +173,8 @@ export async function POST(req: NextRequest) {
       message: requestMessage,
       history,
       displayName,
-      // Sessão por conversa: o ID do chat (IndexedDB do cliente) identifica a
-      // sessão de memória na AKIRA — cada conversa tem o seu contexto isolado.
+      // Sessão por conversa: o ID persistente identifica a sessão de memória na
+      // AKIRA — cada conversa tem o seu contexto isolado.
       chatId:
         typeof input.chatId === "string" &&
         /^[A-Za-z0-9_-]{6,128}$/.test(input.chatId.trim())

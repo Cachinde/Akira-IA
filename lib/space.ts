@@ -35,7 +35,7 @@ async function withPredictTimeout<T>(promise: Promise<T>, label: string, ms: num
   }
 }
 
-export type ChatMsg = { role: "user" | "assistant"; content: string };
+export type ChatMsg = { role: "user" | "assistant"; content: string; createdAt?: string };
 export type ChatResult = {
   reply: string;
   provider: string;
@@ -316,12 +316,21 @@ export async function apiChat(
   sessionId?: string,
 ): Promise<ChatResult> {
   const client = await chatSpaceClient();
-  const gradioHistory: GradioMessage[] = history.slice(-12).map(({ role, content }) => ({
-    role,
-    content: [{ type: "text", text: content }],
-    metadata: null,
-    options: null,
-  }));
+  const gradioHistory: GradioMessage[] = history.slice(-12).map(({ role, content, createdAt }) => {
+    const time = createdAt && !Number.isNaN(Date.parse(createdAt))
+      ? new Intl.DateTimeFormat("pt-AO", {
+          dateStyle: "short",
+          timeStyle: "short",
+          timeZone: "Africa/Luanda",
+        }).format(new Date(createdAt))
+      : "";
+    return {
+      role,
+      content: [{ type: "text", text: time ? `[Mensagem enviada em ${time} WAT]\n${content}` : content }],
+      metadata: null,
+      options: null,
+    };
+  });
   const result = await withPredictTimeout(
     client.predict("/chat", [
       message,

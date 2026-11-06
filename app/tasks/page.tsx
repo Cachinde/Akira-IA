@@ -111,7 +111,7 @@ export default function TasksPage() {
       <section className="plans-intro">
         <span className="plans-eyebrow">TAREFAS AKIRA</span>
         <h1>A tua lista de tarefas.</h1>
-        <p>Anota o que tens a fazer, marca quando fica pronto e acompanha o teu dia. Fica guardado no teu navegador.</p>
+        <p>Anota o que tens a fazer, marca quando fica pronto e acompanha o teu dia. As tarefas ficam guardadas na tua conta e sincronizadas entre dispositivos.</p>
       </section>
       <section className="tasks-panel" aria-label="Lista de tarefas">
         {error && (
@@ -169,7 +169,7 @@ export default function TasksPage() {
           ))}
         </ul>
       </section>
-      <p className="plans-footnote">As tarefas ficam guardadas neste navegador, associadas à tua conta AKIRA.</p>
+      <p className="plans-footnote">As tarefas ficam guardadas na base de dados da tua conta AKIRA.</p>
     </main>
   );
 }

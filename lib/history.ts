@@ -1,3 +1,5 @@
+import { deleteLegacyEntries, readLegacyEntries } from "./legacy-browser-storage";
+
 export type Msg = {
   id: string;
   role: "user" | "assistant";
@@ -31,87 +33,45 @@ export type Chat = {
   };
 };
 
-type StoredChat = Chat & { chatId?: string; historyScope?: string };
+type RecordValue = Record<string, unknown>;
+type LegacyChat = RecordValue & { id: string; historyScope: string; chatId?: string };
 
-const DATABASE = "akira-bot-ui";
-const STORE = "conversations";
-let databasePromise: Promise<IDBDatabase> | undefined;
-
-// Alguns navegadores/bloqueadores negam o IndexedDB ("user denied permission to
-// access the database"). A AKIRA deve continuar a funcionar em memória nesses casos.
-function describeStorageFailure(reason: unknown): Error {
-  const name = reason instanceof Error ? reason.name : "";
-  if (name === "SecurityError" || name === "NotAllowedError") {
-    return new Error(
-      "O navegador bloqueou o histórico local. A AKIRA continua a funcionar, mas não vai lembrar as conversas neste dispositivo.",
-    );
-  }
-  return reason instanceof Error ? reason : new Error("Não foi possível abrir o histórico.");
+function isRecord(value: unknown): value is RecordValue {
+  return !!value && typeof value === "object" && !Array.isArray(value);
 }
 
-function openDatabase(): Promise<IDBDatabase> {
-  if (typeof indexedDB === "undefined") {
-    return Promise.reject(new Error("Este navegador não suporta o histórico local."));
-  }
-
-  if (!databasePromise) {
-    const attempt = new Promise<IDBDatabase>((resolve, reject) => {
-      const request = indexedDB.open(DATABASE, 2);
-      request.onupgradeneeded = () => {
-        if (!request.result.objectStoreNames.contains(STORE)) {
-          request.result.createObjectStore(STORE, { keyPath: "id" });
-        }
-        if (!request.result.objectStoreNames.contains("tasks")) {
-          request.result.createObjectStore("tasks", { keyPath: "id" });
-        }
-      };
-      request.onsuccess = () => {
-        const database = request.result;
-        database.onversionchange = () => database.close();
-        resolve(database);
-      };
-      request.onerror = () => reject(describeStorageFailure(request.error));
-      request.onblocked = () =>
-        reject(new Error("O histórico está bloqueado por outra aba. Fecha essa aba e tenta de novo."));
-    });
-    attempt.catch(() => {
-      // Não manter em cache uma falha: as próximas chamadas voltam a tentar.
-      if (databasePromise === attempt) databasePromise = undefined;
-    });
-    databasePromise = attempt;
-  }
-
-  return databasePromise;
-}
-
-function isChat(value: unknown): value is Chat {
-  if (!value || typeof value !== "object") return false;
-  const chat = value as Partial<Chat>;
+function isPendingRequest(value: unknown): value is NonNullable<Chat["pendingRequest"]> {
   return (
-    typeof chat.id === "string" &&
-    typeof chat.title === "string" &&
-    Array.isArray(chat.messages) &&
-    chat.messages.every(
-      (message) =>
-        !!message &&
-        (message.role === "user" || message.role === "assistant") &&
-        typeof message.content === "string",
-    )
+    isRecord(value) &&
+    typeof value.jobId === "string" &&
+    (value.kind === "chat" || value.kind === "image") &&
+    typeof value.completionText === "string" &&
+    typeof value.userMessageId === "string" &&
+    typeof value.createdAt === "string" &&
+    !Number.isNaN(Date.parse(value.createdAt)) &&
+    (value.requestPayload === undefined ||
+      (isRecord(value.requestPayload) &&
+        (value.requestPayload.endpoint === "/api/chat" ||
+          value.requestPayload.endpoint === "/api/image") &&
+        isRecord(value.requestPayload.body)))
   );
 }
 
-function normalizeChat(chat: Chat, index: number): Chat {
+function normalizeChat(chat: RecordValue, index: number): Chat {
   const now = new Date().toISOString();
-  const messages = chat.messages.map((message, messageIndex) => {
-    const candidate = message as Msg;
+  const messages: Msg[] = (chat.messages as RecordValue[]).map((candidate, messageIndex): Msg => {
     const createdAt =
       typeof candidate.createdAt === "string" && !Number.isNaN(Date.parse(candidate.createdAt))
         ? candidate.createdAt
         : now;
+    const feedback: Msg["feedback"] =
+      candidate.feedback === "positive" || candidate.feedback === "negative"
+        ? candidate.feedback
+        : undefined;
     return {
       id: typeof candidate.id === "string" && candidate.id ? candidate.id : `legacy-${index}-${messageIndex}`,
-      role: candidate.role,
-      content: candidate.content,
+      role: candidate.role as Msg["role"],
+      content: candidate.content as string,
       createdAt,
       ...(typeof candidate.context === "string" ? { context: candidate.context } : {}),
       ...(typeof candidate.image === "string" ? { image: candidate.image } : {}),
@@ -120,165 +80,124 @@ function normalizeChat(chat: Chat, index: number): Chat {
         : {}),
       ...(typeof candidate.attachment === "string" ? { attachment: candidate.attachment } : {}),
       ...(typeof candidate.attachmentName === "string" ? { attachmentName: candidate.attachmentName } : {}),
-      ...(candidate.feedback === "positive" || candidate.feedback === "negative"
-        ? { feedback: candidate.feedback }
-        : {}),
-      ...(candidate.uiSpec &&
-      typeof candidate.uiSpec === "object" &&
+      ...(feedback ? { feedback } : {}),
+      ...(isRecord(candidate.uiSpec) &&
       typeof candidate.uiSpec.component === "string" &&
-      candidate.uiSpec.props &&
-      typeof candidate.uiSpec.props === "object"
-        ? { uiSpec: candidate.uiSpec }
+      isRecord(candidate.uiSpec.props)
+        ? { uiSpec: candidate.uiSpec as Msg["uiSpec"] }
         : {}),
       ...(Array.isArray(candidate.uiSpecSegments) &&
       candidate.uiSpecSegments.length > 0 &&
-      candidate.uiSpecSegments.every(
-        (item) => !!item && typeof item === "object" && !Array.isArray(item),
-      )
-        ? { uiSpecSegments: candidate.uiSpecSegments }
+      candidate.uiSpecSegments.every(isRecord)
+        ? { uiSpecSegments: candidate.uiSpecSegments as Array<Record<string, unknown>> }
         : {}),
     };
   });
   const lastMessage = messages[messages.length - 1];
+  const pendingRequest = chat.pendingRequest;
+
   return {
-    id: chat.id || `legacy-${index}`,
-    title: chat.title || "Nova conversa",
+    id: typeof chat.id === "string" && chat.id ? chat.id : `legacy-${index}`,
+    title: typeof chat.title === "string" && chat.title ? chat.title : "Nova conversa",
     messages,
     updatedAt:
       typeof chat.updatedAt === "string" && !Number.isNaN(Date.parse(chat.updatedAt))
         ? chat.updatedAt
         : lastMessage?.createdAt || now,
-    ...(chat.pendingRequest &&
-    typeof chat.pendingRequest.jobId === "string" &&
-    (chat.pendingRequest.kind === "chat" || chat.pendingRequest.kind === "image") &&
-    typeof chat.pendingRequest.completionText === "string" &&
-    typeof chat.pendingRequest.userMessageId === "string" &&
-    typeof chat.pendingRequest.createdAt === "string" &&
-    !Number.isNaN(Date.parse(chat.pendingRequest.createdAt)) &&
-    (!chat.pendingRequest.requestPayload ||
-      ((chat.pendingRequest.requestPayload.endpoint === "/api/chat" ||
-        chat.pendingRequest.requestPayload.endpoint === "/api/image") &&
-        !!chat.pendingRequest.requestPayload.body &&
-        typeof chat.pendingRequest.requestPayload.body === "object"))
-      ? { pendingRequest: chat.pendingRequest }
-      : {}),
+    ...(isPendingRequest(pendingRequest) ? { pendingRequest } : {}),
   };
 }
 
-function readRequest<T>(request: IDBRequest<T>): Promise<T> {
-  return new Promise((resolve, reject) => {
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error || new Error("Não foi possível ler o histórico."));
-  });
+export function parseChat(value: unknown, index = 0): Chat | null {
+  if (!isRecord(value) || typeof value.id !== "string" || !value.id ||
+    typeof value.title !== "string" || !Array.isArray(value.messages)) {
+    return null;
+  }
+  if (
+    !value.messages.every(
+      (message) =>
+        isRecord(message) &&
+        (message.role === "user" || message.role === "assistant") &&
+        typeof message.content === "string",
+    )
+  ) {
+    return null;
+  }
+  if (value.pendingRequest !== undefined && !isPendingRequest(value.pendingRequest)) return null;
+  return normalizeChat(value, index);
+}
+
+async function requestJson<T>(url: string, historyScope: string, init?: RequestInit): Promise<T> {
+  const headers = new Headers(init?.headers);
+  headers.set("x-akira-account-scope", historyScope);
+  const response = await fetch(url, { cache: "no-store", ...init, headers });
+  let data: unknown;
+  try {
+    data = await response.json();
+  } catch {
+    throw new Error("O servidor não devolveu uma resposta válida para o histórico.");
+  }
+  if (!response.ok) {
+    const message =
+      isRecord(data) && typeof data.error === "string"
+        ? data.error
+        : "Não foi possível guardar o histórico na base de dados.";
+    throw new Error(message);
+  }
+  return data as T;
+}
+
+function storedChat(entry: unknown, index: number, historyScope: string): Chat | null {
+  if (!isRecord(entry) || entry.historyScope !== historyScope || typeof entry.id !== "string") return null;
+  const id = typeof entry.chatId === "string" ? entry.chatId : entry.id;
+  return parseChat({ ...entry, id }, index);
+}
+
+async function migrateLegacyChats(historyScope: string): Promise<void> {
+  const entries = await readLegacyEntries("conversations");
+  const scopedEntries = entries.filter(
+    (entry): entry is LegacyChat =>
+      isRecord(entry) &&
+      entry.historyScope === historyScope &&
+      typeof entry.id === "string",
+  );
+  if (!scopedEntries.length) return;
+
+  const chats = scopedEntries.map((entry, index) => storedChat(entry, index, historyScope));
+  if (chats.some((chat) => !chat)) {
+    throw new Error("Há conversas antigas inválidas; os dados locais foram mantidos para recuperação.");
+  }
+  await saveChats(historyScope, chats as Chat[]);
+  await deleteLegacyEntries("conversations", scopedEntries.map((entry) => entry.id));
 }
 
 export async function loadChats(historyScope: string): Promise<Chat[]> {
   if (!historyScope) throw new Error("Não foi possível determinar a conta deste histórico.");
-  const database = await openDatabase();
-  const saved = await readRequest<unknown[]>(
-    database.transaction(STORE, "readonly").objectStore(STORE).getAll(),
-  );
-  const chats = saved
-    .filter(
-      (value): value is StoredChat =>
-        isChat(value) &&
-        !!value &&
-        typeof value === "object" &&
-        (value as StoredChat).historyScope === historyScope,
-    )
-    .map((chat, index) =>
-      normalizeChat(
-        { ...chat, id: typeof chat.chatId === "string" ? chat.chatId : chat.id },
-        index,
-      ),
-    );
-  return chats.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  await migrateLegacyChats(historyScope);
+  const data = await requestJson<{ chats?: unknown }>("/api/conversations", historyScope);
+  if (!Array.isArray(data.chats)) throw new Error("A resposta do histórico tem um formato inválido.");
+  const chats = data.chats.map(parseChat);
+  if (chats.some((chat) => !chat)) throw new Error("O servidor devolveu uma conversa inválida.");
+  return (chats as Chat[]).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }
 
-export async function saveChats(historyScope: string, chats: Chat[]): Promise<void> {
-  if (!historyScope) throw new Error("Não foi possível determinar a conta deste histórico.");
-  const database = await openDatabase();
-  return new Promise((resolve, reject) => {
-    const transaction = database.transaction(STORE, "readwrite");
-    const store = transaction.objectStore(STORE);
-    const getAll = store.getAll();
-    getAll.onsuccess = () => {
-      const savedById = new Map(
-        (getAll.result as StoredChat[])
-          .filter((chat) => chat.historyScope === historyScope)
-          .map((chat) => [chat.chatId || chat.id, chat]),
-      );
-      for (const chat of chats) {
-        const saved = savedById.get(chat.id);
-        if (saved && saved.updatedAt > chat.updatedAt) continue;
-        const storageId = `${historyScope}:${chat.id}`;
-        if (saved && saved.id !== storageId) store.delete(saved.id);
-        store.put({ ...chat, id: storageId, chatId: chat.id, historyScope } satisfies StoredChat);
-      }
-    };
-    getAll.onerror = () => transaction.abort();
-    transaction.oncomplete = () => resolve();
-    transaction.onerror = () => reject(transaction.error || new Error("Não foi possível guardar o histórico."));
-    transaction.onabort = () => reject(transaction.error || new Error("A gravação do histórico foi cancelada."));
+export async function saveChats(_historyScope: string, chats: Chat[]): Promise<void> {
+  if (!chats.length) return;
+  await requestJson("/api/conversations", _historyScope, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ chats }),
   });
 }
 
 export async function saveChat(historyScope: string, chat: Chat): Promise<void> {
-  if (!historyScope) throw new Error("Não foi possível determinar a conta deste histórico.");
-  const database = await openDatabase();
-  return new Promise((resolve, reject) => {
-    const transaction = database.transaction(STORE, "readwrite");
-    const store = transaction.objectStore(STORE);
-    const storageId = `${historyScope}:${chat.id}`;
-    const request = store.get(storageId);
-    request.onsuccess = () => {
-      const saved = request.result as StoredChat | undefined;
-      if (saved && saved.updatedAt > chat.updatedAt) return;
-      store.put({ ...chat, id: storageId, chatId: chat.id, historyScope } satisfies StoredChat);
-    };
-    request.onerror = () => transaction.abort();
-    transaction.oncomplete = () => resolve();
-    transaction.onerror = () => reject(transaction.error || new Error("Não foi possível guardar a conversa."));
-    transaction.onabort = () => reject(transaction.error || new Error("A gravação da conversa foi cancelada."));
-  });
+  await saveChats(historyScope, [chat]);
 }
 
 export async function deleteChat(historyScope: string, chatId: string): Promise<void> {
-  if (!historyScope) throw new Error("Não foi possível determinar a conta deste histórico.");
-  const database = await openDatabase();
-  return new Promise((resolve, reject) => {
-    const transaction = database.transaction(STORE, "readwrite");
-    const store = transaction.objectStore(STORE);
-    const request = store.getAll();
-    request.onsuccess = () => {
-      for (const chat of request.result as StoredChat[]) {
-        if (chat.historyScope === historyScope && (chat.chatId || chat.id) === chatId) {
-          store.delete(chat.id);
-        }
-      }
-    };
-    request.onerror = () => transaction.abort();
-    transaction.oncomplete = () => resolve();
-    transaction.onerror = () => reject(transaction.error || new Error("Não foi possível apagar a conversa."));
-    transaction.onabort = () => reject(transaction.error || new Error("A remoção da conversa foi cancelada."));
-  });
+  await requestJson(`/api/conversations?chatId=${encodeURIComponent(chatId)}`, historyScope, { method: "DELETE" });
 }
 
 export async function clearChats(historyScope: string): Promise<void> {
-  if (!historyScope) throw new Error("Não foi possível determinar a conta deste histórico.");
-  const database = await openDatabase();
-  return new Promise((resolve, reject) => {
-    const transaction = database.transaction(STORE, "readwrite");
-    const store = transaction.objectStore(STORE);
-    const request = store.getAll();
-    request.onsuccess = () => {
-      for (const chat of request.result as StoredChat[]) {
-        if (chat.historyScope === historyScope) store.delete(chat.id);
-      }
-    };
-    request.onerror = () => transaction.abort();
-    transaction.oncomplete = () => resolve();
-    transaction.onerror = () => reject(transaction.error || new Error("Não foi possível limpar o histórico."));
-    transaction.onabort = () => reject(transaction.error || new Error("A limpeza do histórico foi cancelada."));
-  });
+  await requestJson("/api/conversations", historyScope, { method: "DELETE" });
 }

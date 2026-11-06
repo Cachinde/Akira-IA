@@ -33,7 +33,7 @@ import {
 import * as React from "react";
 import { ChangeEvent, FormEvent, KeyboardEvent, useEffect, useRef, useState } from "react";
 import Logo from "../components/Logo";
-import { Chat, Msg, clearChats, deleteChat, loadChats, saveChat, saveChats } from "../lib/history";
+import { Chat, Msg, clearChats, deleteChat, loadChats, saveChat } from "../lib/history";
 import { extractWebSearchQuery, isComputeRequest, isImageGenerationRequest } from "../lib/action-intents";
 import {
   CHAT_MESSAGE_CHARACTER_LIMIT,
@@ -45,7 +45,6 @@ import remarkGfm from "remark-gfm";
 import type { RenderSpec } from "@/components/ui-registry";
 import { AkiraMessageRenderer } from "@/components/AkiraMessageRenderer";
 import { TypewriterMessage } from "@/components/TypewriterMessage";
-import { StoragePermissionBanner } from "@/components/StoragePermissionBanner";
 import { normalizeMath } from "@/components/markdown-plugins";
 import { copyPlainText } from "@/components/md-copy";
 import { parseLegacyUiSpec, parseUiSpecSegmentsPayload, stripUiSpecBlocks } from "@/lib/ui-spec";
@@ -104,6 +103,7 @@ class UsageLimitError extends Error {
 const STYLES = ["foto realista", "anime", "ilustração", "3d", "cinematográfico", "aquarela"];
 const FILE_LIMIT = 8 * 1024 * 1024;
 const DOCUMENT_EXTENSIONS = new Set(["txt", "md", "markdown", "csv", "json", "pdf", "docx"]);
+const IMAGE_MIME_TYPES = new Set(["image/png", "image/jpeg", "image/jpg", "image/webp"]);
 
 function isWebSearchRequest(text: string) {
   return extractWebSearchQuery(text) !== null ||
@@ -125,7 +125,11 @@ function conversationTitle(text: string) {
 
 function formatTime(value?: string) {
   if (!value || Number.isNaN(Date.parse(value))) return "";
-  return new Intl.DateTimeFormat("pt", { hour: "2-digit", minute: "2-digit" }).format(new Date(value));
+  return new Intl.DateTimeFormat("pt-AO", {
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: "Africa/Luanda",
+  }).format(new Date(value));
 }
 
 function resizeComposerTextarea(element: HTMLTextAreaElement) {
@@ -301,7 +305,6 @@ export default function Page() {
   const [authMessage, setAuthMessage] = useState("");
   const [chatMenu, setChatMenu] = useState<string | null>(null);
   const [historyReady, setHistoryReady] = useState(false);
-  const [historyWritable, setHistoryWritable] = useState(false);
   const [storageError, setStorageError] = useState("");
   const [expandedImage, setExpandedImage] = useState<{ src: string; alt: string } | null>(null);
   const [atLatest, setAtLatest] = useState(true);
@@ -359,7 +362,6 @@ export default function Page() {
     if (!authReady || !authSnapshot?.historyScope) return;
     let active = true;
     setHistoryReady(false);
-    setHistoryWritable(false);
     setChats([]);
     setActiveId(null);
     activeIdRef.current = null;
@@ -377,12 +379,11 @@ export default function Page() {
         );
         setChats(list);
         chatsRef.current = list;
-        setHistoryWritable(true);
         setHistoryReady(true);
       })
       .catch((error: unknown) => {
         if (!active) return;
-        setStorageError(error instanceof Error ? error.message : "Não foi possível abrir o histórico local.");
+        setStorageError(error instanceof Error ? error.message : "Não foi possível abrir o histórico da conta.");
         setHistoryReady(true);
       });
     return () => {
@@ -536,15 +537,6 @@ export default function Page() {
       timers.forEach(clearTimeout);
     };
   }, [activeId, authReady, displayName, greetingRun, messages.length]);
-
-  useEffect(() => {
-    if (!historyReady || !historyWritable) return;
-    const scope = authSnapshot?.historyScope;
-    if (!scope) return;
-    saveChats(scope, chats).catch((error: unknown) => {
-      setStorageError(error instanceof Error ? error.message : "Não foi possível guardar o histórico.");
-    });
-  }, [authSnapshot?.historyScope, chats, historyReady, historyWritable]);
 
   useEffect(() => {
     shouldFollowMessages.current = true;
@@ -962,7 +954,15 @@ export default function Page() {
     inputRef.current?.focus();
   }
 
-  function removeChat(id: string) {
+  async function removeChat(id: string) {
+    const scope = authSnapshot?.historyScope;
+    if (!scope) return;
+    try {
+      await deleteChat(scope, id);
+    } catch (error) {
+      setStorageError(error instanceof Error ? error.message : "Não foi possível apagar a conversa.");
+      return;
+    }
     delete draftsRef.current[id];
     if (queuedMessagesRef.current[id]) updateQueue(id, () => []);
     const remainingChats = chatsRef.current.filter((chat) => chat.id !== id);
@@ -977,35 +977,32 @@ export default function Page() {
       setAttachment(null);
       setEditTarget(null);
     }
-    if (authSnapshot?.historyScope) {
-      deleteChat(authSnapshot.historyScope, id).catch((error: unknown) => {
-        setStorageError(error instanceof Error ? error.message : "Não foi possível apagar a conversa.");
-      });
-    }
     setChatMenu(null);
   }
 
-  function clearHistory() {
-    if (!chats.length || !window.confirm("Apagar todas as conversas desta conta guardadas neste navegador?")) return;
-    chatsRef.current = [];
-    setChats([]);
-    draftsRef.current = {};
-    queuedMessagesRef.current = {};
-    setQueuedCounts({});
-    activeSessionVersionRef.current += 1;
-    setActiveSessionVersion(activeSessionVersionRef.current);
-    activeIdRef.current = null;
-    setActiveId(null);
-    restoreDraft(null);
-    setAttachment(null);
-    setEditTarget(null);
-    if (authSnapshot?.historyScope) {
-      clearChats(authSnapshot.historyScope).catch((error: unknown) => {
-        setStorageError(error instanceof Error ? error.message : "Não foi possível apagar o histórico.");
-      });
+  async function clearHistory() {
+    if (!chats.length || !window.confirm("Apagar todas as conversas desta conta em todos os dispositivos?")) return;
+    const scope = authSnapshot?.historyScope;
+    if (!scope) return;
+    try {
+      await clearChats(scope);
+      chatsRef.current = [];
+      setChats([]);
+      draftsRef.current = {};
+      queuedMessagesRef.current = {};
+      setQueuedCounts({});
+      activeSessionVersionRef.current += 1;
+      setActiveSessionVersion(activeSessionVersionRef.current);
+      activeIdRef.current = null;
+      setActiveId(null);
+      restoreDraft(null);
+      setAttachment(null);
+      setEditTarget(null);
+      setStatus("O histórico desta conta foi apagado em todos os dispositivos.");
+      setStatusKind("success");
+    } catch (error) {
+      setStorageError(error instanceof Error ? error.message : "Não foi possível apagar o histórico.");
     }
-    setStatus("O histórico desta conta foi apagado deste navegador.");
-    setStatusKind("success");
   }
 
   function exportHistory() {
@@ -1036,11 +1033,8 @@ export default function Page() {
       setStatusKind("error");
       return;
     }
-    if (
-      imgMode &&
-      !["image/png", "image/jpeg", "image/jpg", "image/webp"].includes(file.type.toLocaleLowerCase("en"))
-    ) {
-      setStatus("As imagens de referência têm de estar em PNG, JPEG ou WebP.");
+    if (file.type.startsWith("image/") && !IMAGE_MIME_TYPES.has(file.type.toLocaleLowerCase("en"))) {
+      setStatus("As imagens anexadas têm de estar em PNG, JPEG ou WebP.");
       setStatusKind("error");
       return;
     }
@@ -1244,6 +1238,7 @@ export default function Page() {
     const previousHistory = (currentChat?.messages || []).map((message) => ({
       role: message.role,
       content: message.context ? `${message.content}\n\n${message.context}` : message.content,
+      createdAt: message.createdAt,
     }));
     const computeRequest =
       !backgroundSend &&
@@ -1473,18 +1468,7 @@ export default function Page() {
       if (!authSnapshot.historyScope) {
         throw new Error("Não foi possível associar o pedido à conta atual.");
       }
-      try {
-        await saveChat(authSnapshot.historyScope, queuedChat);
-      } catch (storageFailure: unknown) {
-        // Navegador bloqueou o guardar local: a conversa segue em memória,
-        // o envio e a resposta da AKIRA continuam normalmente.
-        setStorageError(
-          storageFailure instanceof Error
-            ? storageFailure.message
-            : "Não foi possível guardar a conversa.",
-        );
-        setHistoryWritable(false);
-      }
+      await saveChat(authSnapshot.historyScope, queuedChat);
       if (imageRequest) {
         const response = await fetch("/api/image", {
           method: "POST",
@@ -1742,10 +1726,25 @@ export default function Page() {
         }),
       });
       await readJson(response);
-      setChats((current) => current.map((chat) => ({
-        ...chat,
-        messages: chat.messages.map((item) => item.id === message.id ? { ...item, feedback: rating } : item),
-      })));
+      const currentChat = chatsRef.current.find((chat) =>
+        chat.messages.some((item) => item.id === message.id),
+      );
+      if (!currentChat || !authSnapshot?.historyScope) {
+        throw new Error("Não foi possível associar o feedback à conversa guardada.");
+      }
+      const updatedChat: Chat = {
+        ...currentChat,
+        updatedAt: new Date().toISOString(),
+        messages: currentChat.messages.map((item) =>
+          item.id === message.id ? { ...item, feedback: rating } : item,
+        ),
+      };
+      const updatedChats = chatsRef.current.map((chat) =>
+        chat.id === updatedChat.id ? updatedChat : chat,
+      );
+      await saveChat(authSnapshot.historyScope, updatedChat);
+      chatsRef.current = updatedChats;
+      setChats(updatedChats);
       setStatus(message.image
         ? "Avaliação da imagem guardada. Obrigado."
         : "Feedback guardado. Obrigado.");
@@ -2398,7 +2397,7 @@ export default function Page() {
                 <input
                   ref={fileRef}
                   type="file"
-                  accept={imgMode ? "image/png,image/jpeg,image/webp" : "image/*,.txt,.md,.markdown,.csv,.json,.pdf,.docx"}
+                  accept={imgMode ? "image/png,image/jpeg,image/webp" : "image/png,image/jpeg,image/webp,.txt,.md,.markdown,.csv,.json,.pdf,.docx"}
                   hidden
                   onChange={onFile}
                   disabled={busy || activeChatPending || Boolean(editTarget)}
@@ -2548,7 +2547,6 @@ export default function Page() {
          </section>
        </div>
       )}
-      <StoragePermissionBanner />
       {storageError && (
         <div className="toast-note toast-error toast-sticky" role="alert">
           <span className="toast-icon"><ShieldAlert size={13} /></span>
